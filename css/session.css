@@ -1,0 +1,242 @@
+/* Dugout — session-based capture, Round Card, progress, philosophy.
+   Tone rule: kid-warm. Celebration on all-pass, streak flames, no red ink —
+   a ✗ is "next thing to work on", never a failure wall. */
+
+.brand .spacer { flex: 1; }
+.chip {
+  font-family: 'Oswald', sans-serif; font-size: 11px; font-weight: 600; letter-spacing: .12em;
+  text-transform: uppercase; color: var(--lights); border: 1px solid var(--line);
+  background: var(--card); padding: 5px 10px; border-radius: 999px;
+}
+.topnav { display: flex; gap: 6px; margin-top: 12px; flex-wrap: wrap; }
+.topnav a {
+  font-family: 'Oswald', sans-serif; font-size: 11px; font-weight: 600; letter-spacing: .12em;
+  text-transform: uppercase; color: var(--chalk-dim); text-decoration: none;
+  padding: 7px 11px; border: 1px solid var(--line); border-radius: 999px;
+}
+.topnav a.on { color: var(--lights); border-color: var(--lights); background: rgba(255,184,56,.08); }
+
+/* ---------- profiles ---------- */
+.plist { display: flex; flex-direction: column; gap: 8px; }
+.profile-row {
+  display: flex; align-items: center; gap: 10px; width: 100%;
+  background: var(--card); border: 1px solid var(--line); border-radius: 10px;
+  padding: 14px; color: var(--chalk); cursor: pointer; text-align: left;
+}
+.profile-row.on { border-color: var(--lights); background: rgba(255,184,56,.07); }
+.profile-row .pname { font-family: 'Oswald', sans-serif; font-size: 16px; letter-spacing: .04em; flex: 1; }
+.profile-row .pband, .profile-row .pcount { font-size: 12px; color: var(--chalk-dim); }
+.profile-row .pcount { min-width: 68px; text-align: right; }
+
+.sheet {
+  background: var(--card); border: 1px solid var(--line); border-radius: 10px;
+  padding: 14px; margin-top: 10px;
+}
+.sheet h3 { font-family: 'Oswald', sans-serif; font-size: 15px; letter-spacing: .06em; text-transform: uppercase; margin-bottom: 10px; }
+.fl { display: block; font-size: 12px; color: var(--chalk-dim); margin-bottom: 10px; }
+.fl input, .fl select, .sheet input {
+  display: block; width: 100%; margin-top: 5px; background: var(--field-2);
+  border: 1px solid var(--line); border-radius: 8px; color: var(--chalk);
+  padding: 11px; font-family: 'Inter', sans-serif; font-size: 15px;
+}
+.srow { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.err { color: var(--flag); font-size: 13px; line-height: 1.5; margin: 6px 0; }
+
+/* ---------- big actions ---------- */
+.bigbtns { display: flex; flex-direction: column; gap: 10px; }
+.bigbtn {
+  display: grid; grid-template-columns: 44px 1fr; grid-template-rows: auto auto;
+  gap: 2px 12px; text-align: left; padding: 16px;
+  background: var(--lights); color: #1a1206; border: none; border-radius: 12px; cursor: pointer;
+}
+.bigbtn.ghost { background: var(--card); color: var(--chalk); border: 1px solid var(--line); }
+.bigbtn .bb-ic { grid-row: 1 / 3; align-self: center; justify-self: center; font-size: 22px; }
+.bigbtn .bb-t { font-family: 'Oswald', sans-serif; font-size: 17px; font-weight: 600; letter-spacing: .05em; text-transform: uppercase; }
+.bigbtn .bb-s { font-size: 12px; opacity: .78; line-height: 1.4; }
+
+.rlist { display: flex; flex-direction: column; gap: 6px; }
+.round-row {
+  display: flex; gap: 12px; align-items: center; width: 100%; text-align: left;
+  background: var(--card); border: 1px solid var(--line); border-radius: 10px;
+  padding: 12px 14px; color: var(--chalk); cursor: pointer;
+}
+.round-row .rdate { font-family: 'Oswald', sans-serif; font-size: 14px; letter-spacing: .05em; flex: 1; }
+.round-row .rswings { font-size: 12px; color: var(--chalk-dim); }
+.round-row .rmarks { font-family: 'Oswald', sans-serif; font-size: 13px; color: var(--lights); min-width: 44px; text-align: right; }
+
+/* ---------- capture ---------- */
+.progwrap { margin: 14px 0; }
+.progbar { height: 8px; background: var(--field-2); border: 1px solid var(--line); border-radius: 999px; overflow: hidden; }
+.progbar i { display: block; height: 100%; width: 0; background: var(--lights); transition: width .3s; }
+@media (prefers-reduced-motion: reduce) { .progbar i { transition: none; } }
+
+.recstage { aspect-ratio: 9/16; max-height: 60vh; }
+.recstage video { width: 100%; height: 100%; object-fit: cover; }
+.countwrap {
+  position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+  pointer-events: none;
+}
+/* readable from cage distance */
+.countwrap span {
+  font-family: 'Oswald', sans-serif; font-weight: 700; font-size: 22vw; line-height: 1;
+  color: #fff; text-shadow: 0 4px 24px rgba(0,0,0,.8); font-variant-numeric: tabular-nums;
+}
+.reclabel {
+  position: absolute; top: 10px; left: 10px; display: flex; align-items: center; gap: 7px;
+  font-family: 'Oswald', sans-serif; font-size: 12px; letter-spacing: .14em; color: #fff;
+  background: rgba(5,11,8,.7); padding: 6px 10px; border-radius: 999px;
+}
+.reclabel .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--flag); animation: blink 1s steps(2) infinite; }
+@keyframes blink { 50% { opacity: .2; } }
+@media (prefers-reduced-motion: reduce) { .reclabel .dot { animation: none; } }
+
+/* ---------- Round Card ---------- */
+.rc-head { display: flex; align-items: baseline; gap: 10px; margin: 22px 2px 4px; }
+.rc-date { font-family: 'Oswald', sans-serif; font-size: 20px; letter-spacing: .04em; text-transform: uppercase; }
+.rc-who { font-size: 12px; color: var(--chalk-dim); margin-top: 3px; }
+.capnote {
+  background: rgba(255,184,56,.1); border: 1px solid var(--lights); color: var(--lights);
+  border-radius: 8px; padding: 9px 12px; font-size: 13px; margin: 10px 0;
+}
+.celebrate {
+  background: linear-gradient(90deg, rgba(61,220,132,.16), rgba(255,184,56,.16));
+  border: 1px solid #3ddc84; color: #3ddc84; border-radius: 10px;
+  padding: 14px; margin: 12px 0; text-align: center;
+  font-family: 'Oswald', sans-serif; font-size: 16px; letter-spacing: .06em; text-transform: uppercase;
+}
+
+.rc-focus { background: var(--card); border: 1px solid var(--lights); border-radius: 12px; padding: 16px; margin-top: 10px; }
+.rc-focus h2 { font-family: 'Oswald', sans-serif; font-size: 21px; line-height: 1.2; letter-spacing: .03em; color: var(--lights); }
+.rc-focus > p { margin-top: 8px; font-size: 15px; line-height: 1.6; }
+.rc-focus .cueline {
+  margin-top: 12px; border-left: 3px solid var(--lights); background: var(--field-2);
+  border-radius: 0 8px 8px 0; padding: 10px 12px;
+}
+.rc-focus .cueline b {
+  font-family: 'Oswald', sans-serif; font-size: 10px; letter-spacing: .16em;
+  text-transform: uppercase; color: var(--lights); display: block; margin-bottom: 4px;
+}
+.rc-focus .cueline > div { font-size: 17px; font-style: italic; line-height: 1.45; }
+.rc-focus .cueline .mini { margin-top: 9px; }
+.rc-focus h4 {
+  font-family: 'Oswald', sans-serif; font-size: 11px; letter-spacing: .16em;
+  text-transform: uppercase; color: var(--chalk-dim); margin: 14px 0 6px;
+}
+.rc-focus ul { margin-left: 18px; font-size: 14px; line-height: 1.6; }
+.src { margin-top: 10px; font-size: 11px; color: var(--chalk-dim); }
+
+/* six marks — no numbers anywhere */
+.marks { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+@media (max-width: 420px) { .marks { grid-template-columns: repeat(2, 1fr); } }
+.mark {
+  background: var(--card); border: 1px solid var(--line); border-radius: 10px;
+  padding: 12px 10px; text-align: center; position: relative;
+}
+.mark .mk { display: block; font-size: 26px; line-height: 1; }
+.mark.pass .mk { color: #3ddc84; }
+.mark.fail .mk { color: var(--lights); }        /* amber, not red — "next thing", not failure */
+.mark.na .mk { color: var(--chalk-dim); }
+.mark .mlabel {
+  display: block; margin-top: 6px; font-family: 'Oswald', sans-serif; font-size: 12px;
+  letter-spacing: .08em; text-transform: uppercase; color: var(--chalk);
+}
+.mark.focus { border-color: var(--lights); background: rgba(255,184,56,.08); }
+.mark .mfocus, .mark .mna {
+  display: block; margin-top: 4px; font-size: 9px; letter-spacing: .1em;
+  text-transform: uppercase; color: var(--lights);
+}
+.mark .mna { color: var(--chalk-dim); }
+
+/* swing reel */
+.reel { display: grid; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 8px; }
+.swing {
+  position: relative; padding: 0; border: 1px solid var(--line); border-radius: 8px;
+  overflow: hidden; background: #050b08; cursor: pointer; aspect-ratio: 3/4;
+}
+.swing img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.swing .noimg { width: 100%; height: 100%; background: var(--field-2); }
+.swing.best { border-color: var(--lights); }
+.swing .sidx {
+  position: absolute; top: 4px; left: 4px; font-family: 'Oswald', sans-serif; font-size: 11px;
+  color: #fff; background: rgba(5,11,8,.75); padding: 2px 6px; border-radius: 5px;
+}
+.swing .sgrade {
+  position: absolute; bottom: 0; left: 0; right: 0; font-size: 10px; letter-spacing: .08em;
+  text-transform: uppercase; color: var(--chalk); background: rgba(5,11,8,.8); padding: 4px;
+}
+.swing .sbest {
+  position: absolute; top: 4px; right: 4px; font-size: 9px; color: #1a1206;
+  background: var(--lights); padding: 2px 5px; border-radius: 5px; letter-spacing: .06em;
+}
+.sl-cur { font-style: italic; color: var(--lights); margin-bottom: 10px; font-size: 15px; }
+
+/* ---------- progress ---------- */
+.pglist { display: flex; flex-direction: column; gap: 4px; }
+.pg-row { display: flex; align-items: center; gap: 10px; background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 11px 13px; }
+.pglabel { font-family: 'Oswald', sans-serif; font-size: 13px; letter-spacing: .06em; text-transform: uppercase; min-width: 82px; }
+.pgline { flex: 1; display: flex; gap: 3px; flex-wrap: wrap; }
+.pgline i { font-style: normal; font-size: 13px; }
+.pgline i.ok { color: #3ddc84; }
+.pgline i.no { color: var(--lights); }
+.pgline i.na { color: var(--chalk-dim); }
+.pgtrend { font-size: 15px; }
+.pgtrend.up { color: #3ddc84; }
+.pgtrend.down { color: var(--lights); }
+.pgtrend.flat { color: var(--chalk-dim); }
+.pgnote { font-size: 12px; color: var(--lights); padding: 2px 4px 8px 95px; }
+
+/* ---------- philosophy ---------- */
+.presets { display: flex; flex-direction: column; gap: 8px; }
+.preset {
+  text-align: left; background: var(--card); border: 1px solid var(--line);
+  border-radius: 10px; padding: 12px 14px; color: var(--chalk); cursor: pointer;
+}
+.preset.on { border-color: var(--lights); background: rgba(255,184,56,.07); }
+.preset b { font-family: 'Oswald', sans-serif; font-size: 14px; letter-spacing: .05em; display: block; }
+.preset small { color: var(--chalk-dim); font-size: 11.5px; line-height: 1.45; display: block; margin-top: 3px; }
+
+.ph-cp { margin-bottom: 14px; }
+.ph-cp h4 {
+  font-family: 'Oswald', sans-serif; font-size: 12px; letter-spacing: .16em;
+  text-transform: uppercase; color: var(--lights); margin: 10px 0 6px;
+}
+.ph-tip { display: flex; align-items: center; gap: 8px; padding: 7px 0; border-bottom: 1px solid rgba(42,68,51,.5); }
+.ph-tip label { display: flex; align-items: center; gap: 8px; flex: 1; cursor: pointer; font-size: 13.5px; line-height: 1.4; }
+.ph-tip input { accent-color: var(--lights); width: 17px; height: 17px; flex: none; }
+.ph-tip.red { opacity: .5; }
+.ph-tip.red .tf { text-decoration: line-through; }
+.tmeta { display: flex; align-items: center; gap: 5px; }
+.tgap { color: var(--chalk-dim); font-size: 12px; }
+.ttier { font-size: 9px; font-weight: 700; padding: 2px 5px; border-radius: 4px; }
+.ttier.tA { background: rgba(61,220,132,.18); color: #3ddc84; }
+.ttier.tB { background: rgba(255,184,56,.18); color: var(--lights); }
+.ttier.tC { background: rgba(217,79,61,.18); color: var(--flag); }
+.tred {
+  background: transparent; border: 1px solid var(--line); color: var(--chalk-dim);
+  border-radius: 6px; font-size: 10px; padding: 4px 7px; cursor: pointer; letter-spacing: .06em;
+}
+.ph-ord { display: flex; align-items: center; gap: 8px; background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; margin-bottom: 5px; }
+.ph-ord .on { font-family: 'Oswald', sans-serif; color: var(--lights); width: 18px; }
+.ph-ord .ol { flex: 1; font-size: 14px; }
+.ph-slang { margin-bottom: 10px; }
+.sl-base { font-size: 12px; color: var(--chalk-dim); font-style: italic; margin-bottom: 4px; }
+.ph-slang input {
+  width: 100%; background: var(--field-2); border: 1px solid var(--line);
+  border-radius: 8px; color: var(--chalk); padding: 9px 11px; font-size: 14px; font-family: 'Inter', sans-serif;
+}
+.dep { margin-left: 18px; font-size: 13px; line-height: 1.6; color: var(--chalk-dim); }
+.dep b { color: var(--flag); font-style: italic; }
+
+/* film room: frame-sequence player (a swing's keyframes, raw video long gone) */
+/* No max-height: the frame's box must equal its rendered image, or object-fit letterboxes
+   inside the element and the chalk overlay lines up with the box instead of the picture. */
+#frameImg { display: block; width: 100%; height: auto; background: #000; }
+/* A canvas is a replaced element, so `inset:0` alone leaves it at its intrinsic 300x150 —
+   these make it track the stage even before any JS measures it. sizeCanvas() still sets the
+   backing store for crispness, but alignment no longer depends on it running. */
+#overlay { width: 100%; height: 100%; }
+/* app.css's `video{display:block}` outranks the UA's [hidden] rule, so a hidden <video>
+   keeps its layout box. That pushed the frame down inside the stage while #overlay stayed
+   pinned to the stage's top-left — every chalk mark would land offset from the frame. */
+#vid[hidden], #frameImg[hidden] { display: none !important; }
+.deepdive { width: 100%; margin-top: 10px; justify-content: center; }

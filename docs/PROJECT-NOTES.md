@@ -7,21 +7,55 @@
 
 | Path | What it is |
 |---|---|
-| `index.html` | The entire app — one self-contained file, no build, works offline. GitHub Pages serves this at the root URL. |
-| `README.md` | Public-facing repo readme with features + roadmap |
-| `.nojekyll` | Tells GitHub Pages to serve files as-is |
-| `media/swing-shadow.mp4` | The processed shadow-silhouette swing video (source for the checkpoint animations; also usable as a Compare reference clip) |
-| `media/shadow-sprite.jpg` | 130-frame sprite sheet (10×13 grid, 288×191 per frame, 12fps) baked into index.html — kept here as the editable source asset |
-| `docs/PROJECT-NOTES.md` | This file |
+| `index.html` | App shell + view markup. Was one 354KB self-contained file; now ~25KB, with css/ and js/ split out. Still no build step — GitHub Pages serves it as-is. |
+| `css/app.css` | The v1 styles, extracted verbatim |
+| `css/session.css` | Round Card, progress, philosophy, capture |
+| `js/config.js` | Every tunable constant: caps, thresholds, phase windows, age gates |
+| `js/library.js` | **Generated** — the Tip Library. Do not hand-edit; see `scripts/build_library.py` |
+| `js/store.js` | Profiles/sessions/philosophy in localStorage; keyframes in IndexedDB |
+| `js/pose.js` | MoveNet wrapper, two-pass (detect → crop → re-detect) |
+| `js/segment.js` | Round segmentation: motion energy + audio confirm |
+| `js/evaluate.js` | The 18 detectors, the rollup, and verbal-first rendering |
+| `js/ai.js` | The single AI adapter — one call per session, stub fallback |
+| `js/filmroom.js` | The v1 film room + the keyframe player. Holds the inlined shadow sprite |
+| `js/app.js` | Router, round pipeline, Round Card, progress, philosophy |
+| `vendor/` | TF.js + MoveNet, vendored (~5.6MB). No CDN, no build, works offline |
+| `scripts/` | `build_library.py` (xlsx → js), `build_index.py` (assembles index.html) |
+| `docs/POSE-PROBE.md` | Measured findings that drove the design — **read before tuning thresholds** |
+| `media/*` | Editable source assets (also at repo root, historically) |
 
-## App features (v1)
+## Regenerating
 
-1. **Film** — record/load a swing, ¼/½ speed, frame stepping
-2. **Chalk kit** — lines, arrows, circles, measured angles drawn on frozen frames
-3. **Checkpoints** — 6 cards (Stance → Load → Stride → Hips Fire → Contact → Finish); each plays the real shadow swing, slowing + highlighting its phase with always-on coaching lines
-4. **Compare** — two clips side-by-side, per-clip frame nudge, synced playback
-5. **AI Coach** — samples 8 frames from a marked swing window; returns one fix, dad-voice + kid-voice guidance, a drill, and on-film annotations (Claude-hosted version only)
-6. **Scouting notes** — persists locally
+The Tip Library is generated from `DugOut_Tip_Library_Seed_v0.2.xlsx` in the working
+folder. After the trainer revises the sheet:
+
+    python3 scripts/build_library.py
+
+Never hand-edit `js/library.js` — it will be overwritten.
+
+## App features (v2 — session-based)
+
+1. **Rounds** — upload a cage/BP video or record in-app; auto-segmented into swings,
+   capped at 90s / 15 swings; the raw upload is released and never persisted
+2. **Round Card** — priority focus + verbal correction first, six ✓/✗ checkpoint marks
+   (no numbers anywhere), swing reel, best-swing highlight, per-swing Deep Dive
+3. **Checkpoints** — the same six cards, now the spine of the rubric, the library index,
+   and the philosophy structure
+4. **Progress** — per-checkpoint streaks and trend arrows across rounds (ER-12)
+5. **My Philosophy** — pick a school preset, adjust tips, order priorities, mark red
+   lines, add your own slang. Selection, not authoring. Renders all feedback.
+6. **Film room** — the v1 tools: chalk kit, compare, Film Review (renamed from "Coach's
+   film session"), scouting notes
+7. **AI Coach** — one call per session for wording only; Deep Dive is per-swing on demand
+   (Claude-hosted version; the static demo composes everything from the library)
+
+## What is honestly detected
+
+Of the library's 28 fault entries (FN-04 is a philosophy toggle, not a fault), pose can
+measure 18. The rest need ball flight or bat tracking and are **never guessed at** — a
+checkpoint is scored only on what can actually be measured. Every checkpoint retains
+detectable entries, so all six are still graded. The concentrated gap is the outcome-based
+Contact faults (CT-01/02/03/04) and anything defined on the barrel (FN-01, CT-04).
 
 ## Shadow pipeline (how the media was made)
 
@@ -33,7 +67,12 @@ Stance 0–1.6 · Load 1.6–3.2 · Stride 3.2–4.2 · Hips 4.2–5.0 · Contac
 
 ## Roadmap
 
-- v1.x: AI coach behind a small backend (API key) so the public demo gets analysis
-- v2: Pitching module (dad's home turf) — same film-room chassis, new checkpoints
+- Verify on a real phone: the playback+rVFC segmentation path, the timed round, and chalk
+  over stored keyframes (see docs/POSE-PROBE.md — the preview sandbox cannot show these)
+- Trainer validation of the library, then re-run `scripts/build_library.py`
+- Bat tracking would unlock CT-04 and FN-01, and sharpen Contact considerably
+- AI coach behind a small backend so the public demo gets analysis
+- v2: Pitching module — same film-room chassis, new checkpoints
 - v3: Catching, infield; per-player film history
-- Platform: AAU team accounts, position-by-position skills tracking, coach dashboards, minor-safe privacy model
+- Platform: AAU team accounts, coach dashboards, minor-safe privacy model
+  (out of scope now; the data model already carries profileId everywhere)
