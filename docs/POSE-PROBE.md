@@ -89,3 +89,38 @@ Committed under `vendor/`, ~5.6MB total, no CDN and no build step:
 
 Note the model is fetched from tfhub.dev with `?tfjs-format=file`; the older
 `storage.googleapis.com/tfjs-models/...` path now 404s after the Kaggle migration.
+
+## Addendum — what the preview sandbox cannot verify (July 16)
+
+The Claude preview renderer is occluded, and the consequences are broader than first
+recorded. Measured, not assumed:
+
+- `play()` resolves but `currentTime` stays 0 and no frames paint.
+- `requestVideoFrameCallback` never fires → segmentation falls back to seeking.
+- **`requestAnimationFrame` never fires.**
+- **`ResizeObserver` never fires** — a fresh observer with a forced layout change delivered
+  zero callbacks.
+- A freshly-served CSS rule failed to apply to a canvas (`#overlay{width:100%}` present in
+  the loaded sheet, computed width stayed at the intrinsic 300px).
+
+Two things follow. First, anything whose *correctness* depends on the render loop must not
+rely on it alone — `sizeCanvas()` now retries on a timer rather than rAF, and the chalk
+overlay is sized from CSS so alignment does not wait on JS. This is a real robustness win
+on device too: a backgrounded phone tab stops painting for the same reason.
+
+Second, these remain **unverified and must be checked on a real phone**:
+
+1. The playback + rVFC segmentation path (the fast path; only the seek fallback ran here).
+2. Chalk overlay alignment over a stored swing's keyframes.
+3. The checkpoint shadow-sprite animations (they are driven by rAF).
+4. The timed in-app round (`getUserMedia` + `MediaRecorder`) — no camera here.
+5. Any AI path — no backend reachable from the static demo.
+
+### Performance, measured
+
+The seek fallback processed a 23.3s clip in ~200s (~490ms/sample across 348 samples) —
+far worse than the 37ms/frame the standalone probe measured for seeking alone. The likely
+cause is contention with the live WebGL context, since MoveNet is loaded before the motion
+pass to find the batter ROI. This does not affect the playback path, which is what a phone
+will use, but it means **the fallback is not a viable primary path** and the rVFC route has
+to be confirmed on device before the trainer demo.

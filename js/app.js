@@ -483,11 +483,13 @@
   async function openSwing(sessionId, swingId) {
     const frames = await Store.getFrames(swingId);
     if (!frames || !frames.length) return;
+    // Show the view BEFORE loading: the film room measures the frame to size the chalk
+    // overlay, and everything measures zero while the <main> is still hidden.
+    go('film');
     window.DugoutFilm.loadFrames(frames.map((f) => ({ t: f.t, url: objURL(f.blob) })), {
       sessionId, swingId,
       onDeepDive: () => deepDive(sessionId, swingId)
     });
-    go('film');
   }
 
   // ---- Deep Dive: the v1 8-frame single-swing analysis, on demand ----

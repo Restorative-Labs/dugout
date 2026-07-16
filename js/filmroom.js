@@ -53,7 +53,12 @@
   function showFrame(i){
     if(!seq.length) return;
     seqI = Math.max(0, Math.min(seq.length - 1, i));
+    // The first frame has no layout box until it decodes, so sizeCanvas() would bail on a
+    // zero rect and leave #overlay at the canvas default — chalk drawn at the wrong scale.
     frameImg.src = seq[seqI].url;
+    // An <img> has no height until it decodes, so size the overlay once the frame is up.
+    if(frameImg.complete) sizeCanvas();
+    else frameImg.addEventListener('load', sizeCanvas, { once: true });
     scrub.value = Math.round(seqI / Math.max(1, seq.length - 1) * 1000);
     tc.textContent = seq[seqI].t.toFixed(2) + 's';
     redraw();
@@ -80,7 +85,15 @@
   // ---------- canvas sizing ----------
   function sizeCanvas(){
     const r = displayEl().getBoundingClientRect();
-    if(!r.width || !r.height) return;
+    // A canvas is a replaced element, so `inset:0` will NOT stretch it — these explicit
+    // sizes are the only thing aligning the chalk overlay with the frame. Measuring while
+    // the view is still hidden gives zeros, so retry rather than leave it at 300x150.
+    // The retry uses a timer, not rAF: a backgrounded or occluded renderer stops painting,
+    // which silently stops rAF and ResizeObserver too, and the overlay would never size.
+    if(!r.width || !r.height){
+      if(seq.length || vid.src) setTimeout(sizeCanvas, 60);
+      return;
+    }
     overlay.width = Math.round(r.width * devicePixelRatio);
     overlay.height = Math.round(r.height * devicePixelRatio);
     overlay.style.width = r.width + 'px';
@@ -716,7 +729,7 @@
       document.getElementById('markEnd').disabled = true;
       btnAnalyze.disabled = true;
       showFrame(0);
-      requestAnimationFrame(sizeCanvas);
+      setTimeout(sizeCanvas, 0);
     },
 
     // Back to a plain video (the v1 flow: load your own clip, mark a window).
