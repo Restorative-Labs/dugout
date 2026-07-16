@@ -174,33 +174,36 @@
 <!-- ============ PHILOSOPHY ============ -->
 <main id="view-philosophy" hidden>
   <div class="eyebrow">My philosophy</div>
-  <p class="hint">Pick how you teach. Dugout words every correction this way — same fix, your voice. Takes about five minutes, mostly tapping.</p>
 
-  <div class="eyebrow">1 · Start from a school</div>
-  <div class="presets" id="phPresets"></div>
+  <div class="wiz-head">
+    <div class="wiz-dots" id="phDots"></div>
+    <div class="wiz-q" id="phQuestion"></div>
+    <p class="wiz-help" id="phHelp"></p>
+  </div>
 
-  <div class="eyebrow">2 · Which tips do you use?</div>
-  <div id="phTips"></div>
+  <div id="phStep"></div>
 
-  <div class="eyebrow">3 · What matters most?</div>
-  <div id="phOrder"></div>
-
-  <div class="eyebrow">4 · Your words</div>
-  <div id="phSlang"></div>
-
-  <div class="eyebrow">Never said</div>
-  <ul class="dep" id="phDeprecated"></ul>
-  <p class="hint">These stay out of every correction Dugout writes.</p>
-
-  <div class="srow" style="margin-top:16px">
-    <button class="btn btn-amber" id="phSave">Save philosophy</button>
-    <button class="btn btn-ghost" id="phReset">Reset to suggested</button>
+  <div class="wiz-nav">
+    <button class="btn btn-ghost" id="phBack">‹ Back</button>
+    <button class="btn btn-amber" id="phNext">Next ›</button>
     <span class="saved" id="phSaved">Saved ✓</span>
   </div>
+  <button class="mini" id="phReset" style="margin-top:12px">Reset to DugOut suggested</button>
 </main>
 
 <!-- ============ FILM ROOM (v1) ============ -->
 <main id="view-film" hidden>
+  <!-- swing navigator: only shown when a stored swing is open -->
+  <div class="swingbar" id="swingBar" hidden>
+    <button class="mini" id="sbBack">‹ Round card</button>
+    <span class="sb-mid">
+      <button class="mini sb-arrow" id="sbPrev" aria-label="Previous swing">‹</button>
+      <span id="sbLabel">Swing 1 of 1</span>
+      <button class="mini sb-arrow" id="sbNext" aria-label="Next swing">›</button>
+    </span>
+    <span class="sb-grade" id="sbGrade"></span>
+  </div>
+
   <!-- ============ FILM ============ -->
   <div class="eyebrow">1 · Film</div>
   <div class="stage" id="stage">

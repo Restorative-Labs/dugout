@@ -488,9 +488,19 @@
   }
 
   // ---- open one swing in the film room (Chalk available) ----
+  // Which swing the film room is showing, so it can move between swings in place instead
+  // of sending you back to the Rounds tab for every clip.
+  let reviewing = null;   // {sessionId, index}
+
   async function openSwing(sessionId, swingId) {
+    const s = Store.session(sessionId);
+    if (!s) return;
+    const index = s.swings.findIndex((x) => x.id === swingId);
+    if (index < 0) return;
     const frames = await Store.getFrames(swingId);
     if (!frames || !frames.length) return;
+
+    reviewing = { sessionId, index };
     // Show the view BEFORE loading: the film room measures the frame to size the chalk
     // overlay, and everything measures zero while the <main> is still hidden.
     go('film');
@@ -498,7 +508,33 @@
       sessionId, swingId,
       onDeepDive: () => deepDive(sessionId, swingId)
     });
+    renderSwingBar();
   }
+
+  function renderSwingBar() {
+    const bar = $('#swingBar');
+    if (!reviewing) { bar.hidden = true; return; }
+    const s = Store.session(reviewing.sessionId);
+    if (!s) { bar.hidden = true; return; }
+    const sw = s.swings[reviewing.index];
+    bar.hidden = false;
+    $('#sbLabel').textContent = 'Swing ' + (reviewing.index + 1) + ' of ' + s.swings.length;
+    $('#sbGrade').textContent = (sw.id === s.bestSwingId ? '★ ' : '') + (sw.grade || '');
+    $('#sbPrev').disabled = reviewing.index === 0;
+    $('#sbNext').disabled = reviewing.index >= s.swings.length - 1;
+  }
+
+  function stepSwing(dir) {
+    if (!reviewing) return;
+    const s = Store.session(reviewing.sessionId);
+    const next = reviewing.index + dir;
+    if (!s || next < 0 || next >= s.swings.length) return;
+    openSwing(s.id, s.swings[next].id);
+  }
+
+  $('#sbPrev').onclick = () => stepSwing(-1);
+  $('#sbNext').onclick = () => stepSwing(1);
+  $('#sbBack').onclick = () => { if (reviewing) go('round', reviewing.sessionId); };
 
   // ---- Deep Dive: the v1 8-frame single-swing analysis, on demand ----
   async function deepDive(sessionId, swingId) {
@@ -554,71 +590,101 @@
   }
 
   // ---------------- philosophy (DUG-36) ----------------
-  // Selection, not authoring: pick a preset, adjust tips, order priorities, mark red lines,
-  // add your own words. Mostly tapping.
+  // A guided questionnaire, not a wall. One question per screen, mostly tapping — the spec
+  // budget is ~5 minutes, and a single page of 29 checkboxes spends it on reading.
   let draft = null;
+  let phStep = 0;
+
+  // Steps are built lazily so the checkpoint pages reflect the preset just chosen.
+  function phSteps() {
+    const steps = [{ key: 'preset', q: 'How do you teach?', help: 'Pick the school closest to your voice. You can change any of it next — nothing here is locked.' }];
+    CFG.CHECKPOINTS.forEach((cp) => steps.push({
+      key: 'tips:' + cp, cp,
+      q: 'At ' + CFG.CHECKPOINT_LABEL[cp] + ', what do you actually coach?',
+      help: 'Tick what you teach. Untick what you don’t. Red-line anything you never want Dugout to say.'
+    }));
+    steps.push({ key: 'order', q: 'What matters most?', help: 'When more than one checkpoint fails, Dugout leads with whichever you rank highest.' });
+    steps.push({ key: 'slang', q: 'Now — your words.', help: 'This is what makes it sound like you. Skip any you like; Dugout falls back to the library’s wording.' });
+    steps.push({ key: 'done', q: 'That’s your philosophy.', help: 'Every correction from here on gets worded this way. You can change it any time.' });
+    return steps;
+  }
 
   function renderPhilosophy() {
-    const active = Store.activePhilosophy();
-    draft = draft || JSON.parse(JSON.stringify(active));
+    if (!draft) { draft = JSON.parse(JSON.stringify(Store.activePhilosophy())); phStep = 0; }
+    const steps = phSteps();
+    phStep = Math.max(0, Math.min(steps.length - 1, phStep));
+    const step = steps[phStep];
 
-    // presets
-    const pw = $('#phPresets');
-    pw.innerHTML = '';
-    const presets = [{ preset: 'DugOut Suggested', notes: 'The library’s own baseline ranking. A good place to start.' }].concat(L.schools);
-    presets.forEach((s) => {
-      const b = el('button', 'preset' + (draft.preset === s.preset ? ' on' : ''));
-      b.innerHTML = '<b>' + esc(s.preset) + '</b><small>' + esc((s.beliefs || s.notes || '').slice(0, 96)) + '</small>';
+    $('#phQuestion').textContent = step.q;
+    $('#phHelp').textContent = step.help;
+    $('#phDots').innerHTML = steps.map((_, i) =>
+      '<i class="' + (i === phStep ? 'on' : i < phStep ? 'done' : '') + '"></i>').join('');
+    $('#phBack').hidden = phStep === 0;
+    $('#phNext').textContent = phStep === steps.length - 1 ? 'Save philosophy' : 'Next ›';
+
+    const box = $('#phStep');
+    box.innerHTML = '';
+
+    if (step.key === 'preset') return phRenderPreset(box);
+    if (step.key.startsWith('tips:')) return phRenderTips(box, step.cp);
+    if (step.key === 'order') return phRenderOrder(box);
+    if (step.key === 'slang') return phRenderSlang(box);
+    if (step.key === 'done') return phRenderDone(box);
+  }
+
+  function phRenderPreset(box) {
+    const presets = [{ preset: 'DugOut Suggested', beliefs: 'The library’s own baseline ranking. A good place to start.' }].concat(L.schools);
+    presets.forEach((sc) => {
+      const b = el('button', 'preset' + (draft.preset === sc.preset ? ' on' : ''));
+      b.innerHTML = '<b>' + esc(sc.preset) + '</b><small>' + esc((sc.beliefs || sc.notes || '').slice(0, 110)) + '</small>';
       b.onclick = () => {
-        draft.preset = s.preset;
-        draft.name = s.preset === 'DugOut Suggested' ? 'DugOut Suggested' : 'My Philosophy';
-        if (s.emphasisIds && s.emphasisIds.length) {
-          // seed selections from the school's emphases, but never drop a checkpoint entirely
+        draft.preset = sc.preset;
+        draft.name = sc.preset === 'DugOut Suggested' ? 'DugOut Suggested' : 'My Philosophy';
+        if (sc.emphasisIds && sc.emphasisIds.length) {
           const sel = {};
           CFG.CHECKPOINTS.forEach((cp) => {
-            const ids = L.tips.filter((t) => t.checkpoint === cp && s.emphasisIds.indexOf(t.id) >= 0).map((t) => t.id);
-            if (ids.length) sel[cp] = ids;
+            const ids = L.tips.filter((t) => t.checkpoint === cp && sc.emphasisIds.indexOf(t.id) >= 0).map((t) => t.id);
+            if (ids.length) sel[cp] = ids;   // never blank a checkpoint entirely
           });
           draft.tipSelections = sel;
         } else draft.tipSelections = {};
         renderPhilosophy();
       };
-      pw.appendChild(b);
+      box.appendChild(b);
     });
+  }
 
-    // tips per checkpoint
-    const tw = $('#phTips');
-    tw.innerHTML = '';
-    CFG.CHECKPOINTS.forEach((cp) => {
-      const sec = el('div', 'ph-cp');
-      sec.appendChild(el('h4', null, CFG.CHECKPOINT_LABEL[cp]));
-      L.tips.filter((t) => t.checkpoint === cp).forEach((t) => {
-        const on = !draft.tipSelections[cp] || !draft.tipSelections[cp].length || draft.tipSelections[cp].indexOf(t.id) >= 0;
-        const red = draft.redLineTipIds.indexOf(t.id) >= 0;
-        const row = el('div', 'ph-tip' + (red ? ' red' : ''));
-        row.innerHTML =
-          '<label><input type="checkbox" ' + (on && !red ? 'checked' : '') + ' ' + (red ? 'disabled' : '') + '>' +
-          '<span class="tf">' + esc(t.fault) + '</span></label>' +
-          '<span class="tmeta">' + (t.detector ? '' : '<span class="tgap" title="Needs ball or bat tracking — not assessed offline">◐</span>') +
-          '<span class="ttier t' + t.tier + '">' + t.tier + '</span></span>' +
-          '<button class="tred" title="Red line: never use this tip">' + (red ? 'red-lined' : 'red line') + '</button>';
-        $('input', row).onchange = (e) => {
-          const cur = draft.tipSelections[cp] || L.tips.filter((x) => x.checkpoint === cp).map((x) => x.id);
-          draft.tipSelections[cp] = e.target.checked ? cur.concat([t.id]).filter((v, i, a) => a.indexOf(v) === i) : cur.filter((x) => x !== t.id);
-        };
-        $('.tred', row).onclick = () => {
-          const i = draft.redLineTipIds.indexOf(t.id);
-          if (i >= 0) draft.redLineTipIds.splice(i, 1); else draft.redLineTipIds.push(t.id);
-          renderPhilosophy();
-        };
-        sec.appendChild(row);
-      });
-      tw.appendChild(sec);
+  function phRenderTips(box, cp) {
+    L.tips.filter((t) => t.checkpoint === cp).forEach((t) => {
+      const on = !draft.tipSelections[cp] || !draft.tipSelections[cp].length || draft.tipSelections[cp].indexOf(t.id) >= 0;
+      const red = draft.redLineTipIds.indexOf(t.id) >= 0;
+      const row = el('div', 'ph-tip' + (red ? ' red' : ''));
+      row.innerHTML =
+        '<label><input type="checkbox" ' + (on && !red ? 'checked' : '') + ' ' + (red ? 'disabled' : '') + '>' +
+        '<span class="tf">' + esc(t.fault) + '</span></label>' +
+        '<span class="tmeta">' + (t.detector ? '' : '<span class="tgap" title="Needs ball or bat tracking — not assessed offline">◐</span>') +
+        '<span class="ttier t' + t.tier + '">' + t.tier + '</span></span>' +
+        '<button class="tred">' + (red ? 'red-lined' : 'red line') + '</button>';
+      $('input', row).onchange = (e) => {
+        const cur = draft.tipSelections[cp] || L.tips.filter((x) => x.checkpoint === cp).map((x) => x.id);
+        draft.tipSelections[cp] = e.target.checked
+          ? cur.concat([t.id]).filter((v, i, a) => a.indexOf(v) === i)
+          : cur.filter((x) => x !== t.id);
+      };
+      $('.tred', row).onclick = () => {
+        const i = draft.redLineTipIds.indexOf(t.id);
+        if (i >= 0) draft.redLineTipIds.splice(i, 1); else draft.redLineTipIds.push(t.id);
+        renderPhilosophy();
+      };
+      box.appendChild(row);
     });
+    const cue = el('p', 'hint');
+    cue.textContent = 'Dugout never says: ' + L.cueGlossary.filter((g) => g.status === 'deprecated')
+      .map((g) => '“' + g.phrases.join('” / “') + '”').join(', ') + '.';
+    box.appendChild(cue);
+  }
 
-    // priority order
-    const ow = $('#phOrder');
-    ow.innerHTML = '';
+  function phRenderOrder(box) {
     (draft.priorities.length ? draft.priorities : CFG.CHECKPOINTS).forEach((cp, i) => {
       const row = el('div', 'ph-ord');
       row.innerHTML = '<span class="on">' + (i + 1) + '</span><span class="ol">' + CFG.CHECKPOINT_LABEL[cp] + '</span>';
@@ -626,51 +692,84 @@
       up.onclick = () => { if (i > 0) { const a = draft.priorities; [a[i - 1], a[i]] = [a[i], a[i - 1]]; renderPhilosophy(); } };
       dn.onclick = () => { const a = draft.priorities; if (i < a.length - 1) { [a[i + 1], a[i]] = [a[i], a[i + 1]]; renderPhilosophy(); } };
       row.appendChild(up); row.appendChild(dn);
-      ow.appendChild(row);
+      box.appendChild(row);
     });
+  }
 
-    // slang for selected tips
-    const sw = $('#phSlang');
-    sw.innerHTML = '';
-    const selectedTips = L.tips.filter((t) =>
-      draft.redLineTipIds.indexOf(t.id) < 0 &&
-      (!draft.tipSelections[t.checkpoint] || !draft.tipSelections[t.checkpoint].length || draft.tipSelections[t.checkpoint].indexOf(t.id) >= 0) &&
-      t.cues.length);
-    selectedTips.slice(0, 12).forEach((t) => {
+  function phRenderSlang(box) {
+    // only the tips they actually kept — asking for slang on unused tips wastes the budget
+    const tips = L.tips.filter((t) =>
+      draft.redLineTipIds.indexOf(t.id) < 0 && t.cues.length &&
+      (!draft.tipSelections[t.checkpoint] || !draft.tipSelections[t.checkpoint].length ||
+        draft.tipSelections[t.checkpoint].indexOf(t.id) >= 0));
+    tips.slice(0, 10).forEach((t) => {
       const row = el('div', 'ph-slang');
-      row.innerHTML = '<div class="sl-base">' + esc(t.cues[0]) + '</div>';
+      row.innerHTML = '<div class="sl-base">' + CFG.CHECKPOINT_LABEL[t.checkpoint] + ' · “' + esc(t.cues[0]) + '”</div>';
       const inp = el('input');
       inp.placeholder = 'What do YOU say for this?';
       inp.value = (draft.slang && draft.slang[t.id]) || '';
-      inp.oninput = () => { draft.slang[t.id] = inp.value.trim(); if (!inp.value.trim()) delete draft.slang[t.id]; };
+      inp.oninput = () => {
+        const v = inp.value.trim();
+        if (v) draft.slang[t.id] = v; else delete draft.slang[t.id];
+        // a red-lined phrase can't sneak in through the back door
+        row.classList.toggle('bad', !!v && Ev.isDeprecated(v));
+      };
       row.appendChild(inp);
-      sw.appendChild(row);
+      box.appendChild(row);
     });
-
-    $('#phDeprecated').innerHTML = L.cueGlossary.filter((g) => g.status === 'deprecated')
-      .map((g) => '<li><b>' + esc(g.phrases.join('” / “')) + '</b> — ' + esc(g.why.split(';')[0]) + '</li>').join('');
   }
 
-  $('#phSave').onclick = () => {
-    const card = draft.source === 'suggested' && draft.preset === 'DugOut Suggested' && !Object.keys(draft.slang).length && !draft.redLineTipIds.length
-      ? Store.suggestedPhilosophy()
-      : Object.assign(Store.newPhilosophy(draft.name || 'My Philosophy', draft.preset), {
-          id: draft.id && draft.id !== 'dugout-suggested' ? draft.id : undefined,
-          tipSelections: draft.tipSelections, priorities: draft.priorities,
-          redLineTipIds: draft.redLineTipIds, slang: draft.slang, source: 'custom'
-        });
-    if (!card.id) card.id = Store.uid('phi');
+  function phRenderDone(box) {
+    const kept = CFG.CHECKPOINTS.reduce((a, cp) => a + (draft.tipSelections[cp]
+      ? draft.tipSelections[cp].length
+      : L.tips.filter((t) => t.checkpoint === cp).length), 0);
+    const sum = el('div', 'sheet');
+    sum.innerHTML =
+      '<h3>' + esc(draft.name || 'My Philosophy') + '</h3>' +
+      '<p class="hint">Starting point: <b>' + esc(draft.preset) + '</b><br>' +
+      kept + ' tips in play · ' + draft.redLineTipIds.length + ' red-lined · ' +
+      Object.keys(draft.slang || {}).length + ' in your own words<br>' +
+      'Leading with: <b>' + CFG.CHECKPOINT_LABEL[(draft.priorities || CFG.CHECKPOINTS)[0]] + '</b></p>';
+    box.appendChild(sum);
+  }
+
+  function phSave() {
+    const bad = Object.keys(draft.slang || {}).filter((k) => Ev.isDeprecated(draft.slang[k]));
+    bad.forEach((k) => delete draft.slang[k]);   // red lines win over slang, always
+    const card = Object.assign(Store.newPhilosophy(draft.name || 'My Philosophy', draft.preset), {
+      tipSelections: draft.tipSelections, priorities: draft.priorities,
+      redLineTipIds: draft.redLineTipIds, slang: draft.slang,
+      source: draft.preset === 'DugOut Suggested' && !draft.redLineTipIds.length && !Object.keys(draft.slang).length ? 'suggested' : 'custom'
+    });
+    if (draft.id && draft.id !== 'dugout-suggested') card.id = draft.id;
     card.active = true;
     Store.savePhilosophy(card);
     Store.setActivePhilosophy(card.id);
+    draft = JSON.parse(JSON.stringify(card));
     $('#phSaved').classList.add('show');
     setTimeout(() => $('#phSaved').classList.remove('show'), 1800);
+  }
+
+  $('#phBack').onclick = () => { phStep--; renderPhilosophy(); };
+  $('#phNext').onclick = () => {
+    const steps = phSteps();
+    if (phStep >= steps.length - 1) return phSave();
+    phStep++;
+    renderPhilosophy();
   };
-  $('#phReset').onclick = () => { draft = JSON.parse(JSON.stringify(Store.suggestedPhilosophy())); renderPhilosophy(); };
+  $('#phReset').onclick = () => { draft = JSON.parse(JSON.stringify(Store.suggestedPhilosophy())); phStep = 0; renderPhilosophy(); };
 
   // ---------------- boot ----------------
   $('#navHome').onclick = (e) => { e.preventDefault(); go('home'); };
-  $('#navFilm').onclick = (e) => { e.preventDefault(); go('film'); };
+  $('#navFilm').onclick = (e) => {
+    e.preventDefault();
+    // Reaching the film room from the nav means "load my own clip", not "review a swing" —
+    // drop the stored-swing context so the navigator bar doesn't linger.
+    reviewing = null;
+    window.DugoutFilm.loadVideoMode();
+    renderSwingBar();
+    go('film');
+  };
   $('#navProgress').onclick = (e) => { e.preventDefault(); go('progress'); };
   $('#navPhilosophy').onclick = (e) => { e.preventDefault(); go('philosophy'); };
 
