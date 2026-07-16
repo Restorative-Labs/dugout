@@ -72,5 +72,5 @@ window.DUGOUT_CONFIG = {
   // ER-05: 7-10 stays environmental/fun-first — no fine mechanical language.
   FUN_FIRST_BANDS: ['7-10'],
 
-  DEBUG: false                    // logs detection confidence for threshold tuning
+  DEBUG: true                     // logs detection confidence for threshold tuning
 };

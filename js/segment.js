@@ -30,18 +30,54 @@
     });
   }
 
+  const OFFSCREEN = 'position:fixed;left:-9999px;top:0;width:160px;pointer-events:none;opacity:0.01';
+
+  // MUST be called synchronously inside the tap that picks the file.
+  //
+  // iOS Safari only lets a <video> play as the direct result of a user gesture, and an
+  // unplayed video also draws blank to canvas there. Every await between the tap and
+  // play() spends the gesture — and this pipeline used to load a 5.6MB model first, so by
+  // the time it called play() the gesture was long gone, playback was refused, and the
+  // whole round fell into the seek fallback: ~200s for a short clip, i.e. an apparent hang.
+  // Priming here starts playback while the gesture is still live; the element stays
+  // unlocked for the rest of the round.
+  function primeVideo(fileOrBlob) {
+    const url = URL.createObjectURL(fileOrBlob);
+    const v = document.createElement('video');
+    v.muted = true;
+    v.defaultMuted = true;
+    v.setAttribute('muted', '');
+    v.setAttribute('playsinline', '');
+    v.playsInline = true;
+    v.preload = 'auto';
+    // Chrome will not decode or paint a detached <video>; it must be in the document.
+    v.style.cssText = OFFSCREEN;
+    document.body.appendChild(v);
+    v.src = url;
+    v._objectUrl = url;
+    const p = v.play();
+    if (p && p.catch) p.catch(() => { v._primeFailed = true; });
+    return v;
+  }
+
   function loadVideo(src) {
     return new Promise((res, rej) => {
       const v = document.createElement('video');
       v.src = src; v.muted = true; v.playsInline = true; v.preload = 'auto';
-      // Chrome will not decode or paint a detached <video>; it must be in the document.
-      v.style.cssText = 'position:fixed;left:-9999px;top:0;width:160px;pointer-events:none;opacity:0.01';
+      v.setAttribute('muted', ''); v.setAttribute('playsinline', '');
+      v.style.cssText = OFFSCREEN;
       document.body.appendChild(v);
       v.addEventListener('loadedmetadata', () => res(v), { once: true });
       v.addEventListener('error', () => rej(new Error('That video could not be read. Try a different clip.')), { once: true });
       setTimeout(() => rej(new Error('That video took too long to open.')), 30000);
     });
   }
+
+  const ready = (v) => (v.readyState >= 1 ? Promise.resolve(v) : new Promise((res, rej) => {
+    v.addEventListener('loadedmetadata', () => res(v), { once: true });
+    v.addEventListener('error', () => rej(new Error('That video could not be read. Try a different clip.')), { once: true });
+    setTimeout(() => rej(new Error('That video took too long to open.')), 30000);
+  }));
 
   const releaseVideo = (v) => {
     try { v.pause(); } catch (e) { /* already gone */ }
@@ -50,40 +86,13 @@
     if (v.parentNode) v.parentNode.removeChild(v);
   };
 
-  // ---------- batter ROI ----------
-  // Spec asks for differencing "in the batter region". We don't know it up front, so
-  // sample a few frames, pose them, and take a padded union. Falls back to the full frame.
-  // This matters on real footage: wind-moving trees and a fence are otherwise pure noise.
-  async function batterROI(v, onProgress) {
-    try {
-      if (onProgress) onProgress('Finding the hitter…');
-      const boxes = [];
-      const dur = v.duration || 1;
-      for (const f of [0.25, 0.5, 0.75]) {
-        try {
-          await seekTo(v, dur * f);
-          const p = await window.DugoutPose.estimate(v, CFG.MOTION_W * 4, CFG.MOTION_H * 4);
-          const bb = p && window.DugoutPose.bbox(p);
-          if (bb) boxes.push(bb);
-        } catch (e) { /* this sample failed; others may not */ }
-      }
-      if (!boxes.length) return null;
-      const u = {
-        x0: Math.min(...boxes.map((b) => b.x0)), x1: Math.max(...boxes.map((b) => b.x1)),
-        y0: Math.min(...boxes.map((b) => b.y0)), y1: Math.max(...boxes.map((b) => b.y1))
-      };
-      // generous pad: he drifts between pitches, and the bat swings well outside his joints
-      const W = CFG.MOTION_W * 4, H = CFG.MOTION_H * 4;
-      const padX = (u.x1 - u.x0) * 0.9, padY = (u.y1 - u.y0) * 0.35;
-      return {
-        x0: Math.max(0, (u.x0 - padX) / W), x1: Math.min(1, (u.x1 + padX) / W),
-        y0: Math.max(0, (u.y0 - padY) / H), y1: Math.min(1, (u.y1 + padY) / H)
-      };
-    } catch (e) {
-      return null;
-    }
-  }
-
+  // The batter ROI used to be found by posing three frames up front. It is gone: it forced
+  // the 5.6MB model to load before the motion pass could start, delayed all progress, and
+  // contended with video decode for the GPU. The standalone probe found the same two swings
+  // in pitch_01.mov full-frame with no pose at all (max/median energy 7.9), so a swing
+  // dominates wind-moving trees comfortably. Pose now loads lazily, after segmentation,
+  // when the first swing is actually analyzed. Revisit if false positives show up on
+  // busier footage — the fix is a motion heatmap, not pose.
   function grayInROI(v, roi) {
     mctx.drawImage(v, 0, 0, CFG.MOTION_W, CFG.MOTION_H);
     const x0 = roi ? Math.floor(roi.x0 * CFG.MOTION_W) : 0;
@@ -127,7 +136,7 @@
       const onFrame = (now, meta) => {
         push(meta.mediaTime);
         got++;
-        if (onProgress && got % 30 === 0) {
+        if (onProgress && got % 15 === 0) {
           onProgress('Watching the round… ' + Math.round(meta.mediaTime / v.duration * 100) + '%');
         }
         if (!v.paused && !v.ended) v.requestVideoFrameCallback(onFrame);
@@ -141,10 +150,41 @@
       // play() resolves but no frames ever arrive. Bail out and seek instead.
       setTimeout(() => { if (got === 0) finish(false); }, 4000);
     });
+    if (CFG.DEBUG) console.log('[segment] rVFC path:', played, '| samples:', samples.length);
+    if (played) { samples.path = 'rvfc'; return samples; }
 
-    if (played) return samples;
+    // Second fast path: play + rAF, deduped on currentTime.
+    //
+    // requestVideoFrameCallback only exists in Safari 15.4+, and without this a slightly
+    // older iPhone drops straight to seeking — ~200s for a short clip, which reads as a
+    // hang. rAF runs at ~60fps against 30fps video, so consecutive callbacks often land on
+    // the same decoded frame; comparing them yields a zero diff and shreds the signal
+    // (docs/POSE-PROBE.md #4). Skipping unchanged currentTime gives the same one-sample-per-
+    // -frame guarantee rVFC provides, without needing rVFC.
+    samples.length = 0; prev = null;
+    const rafPlayed = await new Promise((res) => {
+      let got = 0, settled = false, lastT = -1;
+      const finish = (ok) => { if (!settled) { settled = true; res(ok); } };
+      const tick = () => {
+        if (settled) return;
+        if (v.currentTime !== lastT) { lastT = v.currentTime; push(v.currentTime); got++; }
+        if (onProgress && got % 15 === 0 && v.duration) {
+          onProgress('Watching the round… ' + Math.round(v.currentTime / v.duration * 100) + '%');
+        }
+        if (!v.paused && !v.ended) requestAnimationFrame(tick);
+        else finish(got > 10);
+      };
+      v.addEventListener('ended', () => finish(got > 10), { once: true });
+      v.currentTime = 0;
+      v.playbackRate = 2;   // rAF caps sampling at ~60fps, so don't outrun it
+      v.play().then(() => requestAnimationFrame(tick)).catch(() => finish(false));
+      setTimeout(() => { if (got === 0) finish(false); }, 4000);
+    });
+    if (CFG.DEBUG) console.log('[segment] rAF path:', rafPlayed, '| samples:', samples.length);
+    if (rafPlayed) { samples.path = 'raf'; return samples; }
 
-    // fallback: deterministic seeking. Slower, but works when playback is refused.
+    // Last resort: deterministic seeking. Correct but slow (~37ms+/frame) — only reached
+    // when the browser refuses to play at all.
     samples.length = 0; prev = null;
     try { v.pause(); } catch (e) { /* fine */ }
     if (onProgress) onProgress('Watching the round…');
@@ -156,6 +196,7 @@
       push(t);
       if (onProgress && i % 20 === 0) onProgress('Watching the round… ' + Math.round(i / n * 100) + '%');
     }
+    samples.path = 'seek';
     return samples;
   }
 
@@ -278,20 +319,21 @@
 
   // ---------- public ----------
   // Returns { swings:[{start,end,contactT,frames,...}], capHit, durationSec, meta }
+  // opts.video: a element already primed by primeVideo() inside the user's tap. Passing one
+  // is what keeps iOS on the fast path; without it this still works, just slower.
   async function segment(fileOrBlob, opts) {
     const onProgress = (opts && opts.onProgress) || function () {};
-    const url = URL.createObjectURL(fileOrBlob);
+    const primed = opts && opts.video;
+    const url = primed ? primed._objectUrl : URL.createObjectURL(fileOrBlob);
     let v = null;
     try {
       onProgress('Opening the round…');
-      v = await loadVideo(url);
+      v = primed ? await ready(primed) : await loadVideo(url);
       const durationSec = v.duration || 0;
 
-      await window.DugoutPose.load(onProgress);
-      const roi = await batterROI(v, onProgress);
-
+      const roi = null;   // full-frame: see the note above grayInROI()
       const [samples, peaks] = [await sampleMotion(v, roi, onProgress), await audioPeaks(fileOrBlob)];
-      if (CFG.DEBUG) console.log('[segment] samples', samples.length, 'audio peaks', peaks.length, 'roi', roi);
+      if (CFG.DEBUG) console.log('[segment] samples', samples.length, 'audio peaks', peaks.length);
 
       let swings = findSwings(samples, peaks);
 
@@ -320,7 +362,11 @@
 
       return {
         swings, capHit, durationSec,
-        meta: { sampleCount: samples.length, audioPeaks: peaks.length, roi, usedAudio: peaks.length > 0 }
+        meta: {
+          sampleCount: samples.length, audioPeaks: peaks.length, usedAudio: peaks.length > 0,
+          primed: !!primed, path: samples.path || 'none',
+          rvfc: ('requestVideoFrameCallback' in v), ua: navigator.userAgent.slice(0, 80)
+        }
       };
     } finally {
       // release the raw upload: never persisted, gone as soon as we have the cuts
@@ -329,5 +375,5 @@
     }
   }
 
-  window.DugoutSegment = { segment, loadVideo, releaseVideo, seekTo, findSwings, audioPeaks };
+  window.DugoutSegment = { segment, primeVideo, loadVideo, releaseVideo, seekTo, findSwings, audioPeaks };
 })();

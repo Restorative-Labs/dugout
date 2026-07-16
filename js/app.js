@@ -126,7 +126,7 @@
   const setStatus = (msg) => { $('#capStatus').textContent = msg; };
   const setBar = (pct) => { $('#capBar').style.width = Math.max(0, Math.min(100, pct)) + '%'; };
 
-  async function runRound(fileOrBlob, source) {
+  async function runRound(fileOrBlob, source, primedVideo) {
     const profile = activeProfile();
     if (!profile) { go('home'); return; }
 
@@ -140,6 +140,7 @@
       // ---- segment ----
       const t0 = performance.now();
       const result = await Seg.segment(fileOrBlob, {
+        video: primedVideo,
         onProgress: (m) => {
           setStatus(m);
           const pct = /(\d+)%/.exec(m);
@@ -236,19 +237,20 @@
     }
   }
 
-  // upload entry points
+  // Upload entry points. The `change` handler is still a user-gesture context, so priming
+  // the video here — synchronously, before any await — is what keeps iOS on the playback
+  // path instead of the ~200s seek fallback. Nothing may be awaited before primeVideo().
+  const onPick = (e) => {
+    const f = e.target.files[0];
+    e.target.value = '';
+    if (!f) return;
+    const primed = Seg.primeVideo(f);   // must stay first — a single clip is a round of one
+    runRound(f, 'upload', primed);
+  };
   $('#btnRound').onclick = () => $('#fileRound').click();
-  $('#fileRound').addEventListener('change', (e) => {
-    const f = e.target.files[0];
-    if (f) runRound(f, 'upload');
-    e.target.value = '';
-  });
+  $('#fileRound').addEventListener('change', onPick);
   $('#btnSingle').onclick = () => $('#fileSingle').click();
-  $('#fileSingle').addEventListener('change', (e) => {
-    const f = e.target.files[0];
-    if (f) runRound(f, 'upload');   // a single clip is just a session of one
-    e.target.value = '';
-  });
+  $('#fileSingle').addEventListener('change', onPick);
   $('#capBack').onclick = () => go('home');
 
   // ---------------- DUG-35: timed in-app round ----------------
@@ -444,7 +446,13 @@
     }
 
     $('#rcCorrect').onclick = () => openSlangEditor(s);
-    $('#rcSource').textContent = fb.source === 'ai' ? '' : 'Composed from the tip library';
+    // With DEBUG on, say how the round was read. There is no console on a phone, so this
+    // line is the difference between "it hung" and a diagnosable report.
+    const m = s.meta || {};
+    $('#rcSource').textContent =
+      (fb.source === 'ai' ? '' : 'Composed from the tip library') +
+      (CFG.DEBUG ? '  ·  read via ' + (m.path || '?') + (m.rvfc ? '' : ' (no rVFC)') +
+        ' · ' + (m.sampleCount || 0) + ' frames · ' + Math.round((m.elapsedMs || 0) / 1000) + 's' : '');
   }
 
   // ---- corrections loop: voice only, never substance ----
