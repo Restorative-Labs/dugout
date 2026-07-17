@@ -106,6 +106,108 @@
     return g;
   }
 
+  // ---------- ball detection ----------
+  //
+  // Motion energy cannot tell a swing from a bat reset — both are just "movement", and on
+  // real footage the reset actually wins (it is slower and more sustained). A ball crossing
+  // the frame is what says a pitch happened. No ball, no swing.
+  //
+  // The ball is found as a small, isolated, consistently-moving blob in the frame diff:
+  // too small to be the hitter, too persistent and too directional to be a leaf.
+  const bcv = document.createElement('canvas');
+  bcv.width = CFG.BALL_W; bcv.height = CFG.BALL_H;
+  const bctx = bcv.getContext('2d', { willReadFrequently: true });
+
+  function ballGray(v) {
+    bctx.drawImage(v, 0, 0, CFG.BALL_W, CFG.BALL_H);
+    const d = bctx.getImageData(0, 0, CFG.BALL_W, CFG.BALL_H).data;
+    const g = new Uint8Array(CFG.BALL_W * CFG.BALL_H);
+    for (let i = 0, p = 0; i < d.length; i += 4, p++) g[p] = d[i] * 0.299 + d[i + 1] * 0.587 + d[i + 2] * 0.114;
+    return g;
+  }
+
+  // Connected components over the diff mask. Blobs bigger than a ball (i.e. the hitter) are
+  // still fully traversed — they have to be, to mark them seen — but stop being tracked.
+  const _stack = new Int32Array(CFG.BALL_W * CFG.BALL_H);
+  function ballBlobs(cur, prev) {
+    const W = CFG.BALL_W, H = CFG.BALL_H, N = W * H;
+    const seen = new Uint8Array(N);
+    const out = [];
+    for (let p0 = 0; p0 < N; p0++) {
+      if (seen[p0]) continue;
+      if (Math.abs(cur[p0] - prev[p0]) <= CFG.MOTION_PIXEL_DELTA) { seen[p0] = 1; continue; }
+      let sp = 0;
+      _stack[sp++] = p0; seen[p0] = 1;
+      let n = 0, sx = 0, sy = 0, x0 = 1e9, x1 = -1, y0 = 1e9, y1 = -1;
+      while (sp > 0) {
+        const q = _stack[--sp];
+        const qx = q % W, qy = (q - qx) / W;
+        n++; sx += qx; sy += qy;
+        if (qx < x0) x0 = qx; if (qx > x1) x1 = qx;
+        if (qy < y0) y0 = qy; if (qy > y1) y1 = qy;
+        for (let dy = -1; dy <= 1; dy++) {
+          for (let dx = -1; dx <= 1; dx++) {
+            const nx = qx + dx, ny = qy + dy;
+            if (nx < 0 || ny < 0 || nx >= W || ny >= H) continue;
+            const r = ny * W + nx;
+            if (seen[r]) continue;
+            if (Math.abs(cur[r] - prev[r]) <= CFG.MOTION_PIXEL_DELTA) { seen[r] = 1; continue; }
+            seen[r] = 1;
+            if (sp < _stack.length) _stack[sp++] = r;
+          }
+        }
+      }
+      if (n < CFG.BALL_MIN_AREA || n > CFG.BALL_MAX_AREA) continue;
+      const bw = x1 - x0 + 1, bh = y1 - y0 + 1;
+      const aspect = Math.max(bw / bh, bh / bw);
+      if (aspect > CFG.BALL_MAX_ASPECT) continue;   // a long streak is an arm or a bat
+      out.push({ x: sx / n, y: sy / n, area: n });
+    }
+    return out;
+  }
+
+  // Link per-frame candidates into trajectories. A ball flies in a consistent direction;
+  // noise flickers in place, which BALL_MIN_DISP rejects.
+  function linkBallTracks(frames) {
+    const tracks = [];
+    frames.forEach((f) => {
+      f.blobs.forEach((b) => {
+        let best = null, bd = CFG.BALL_MAX_JUMP;
+        for (const tr of tracks) {
+          if (tr.closed) continue;
+          const last = tr.pts[tr.pts.length - 1];
+          if (f.t - last.t > 0.25) { tr.closed = true; continue; }
+          if (f.t === last.t) continue;
+          const d = Math.hypot(b.x - last.x, b.y - last.y);
+          if (d < bd) { bd = d; best = tr; }
+        }
+        if (best) best.pts.push({ x: b.x, y: b.y, t: f.t });
+        else tracks.push({ pts: [{ x: b.x, y: b.y, t: f.t }], closed: false });
+      });
+    });
+    return tracks.filter((tr) => {
+      if (tr.pts.length < CFG.BALL_MIN_TRACK) return false;
+      const a = tr.pts[0], z = tr.pts[tr.pts.length - 1];
+      const net = Math.hypot(z.x - a.x, z.y - a.y);
+      if (net < CFG.BALL_MIN_DISP) return false;
+
+      // Straightness is the discriminator size and persistence could not provide. Sum the
+      // step lengths: a ball's path length barely exceeds its net displacement, while
+      // wind-jittered foliage wanders far to get nowhere.
+      let path = 0;
+      for (let i = 1; i < tr.pts.length; i++) path += Math.hypot(tr.pts[i].x - tr.pts[i - 1].x, tr.pts[i].y - tr.pts[i - 1].y);
+      if (path <= 0 || net / path < CFG.BALL_MIN_STRAIGHT) return false;
+
+      const dt = z.t - a.t;
+      if (dt <= 0 || net / dt < CFG.BALL_MIN_SPEED) return false;   // leaves drift, balls fly
+      return true;
+    }).map((tr) => ({
+      startT: tr.pts[0].t,
+      endT: tr.pts[tr.pts.length - 1].t,   // ball arriving ~= the moment worth swinging at
+      points: tr.pts.length
+    }));
+  }
+
   function diffEnergy(a, b) {
     let acc = 0;
     for (let i = 0; i < a.length; i++) {
@@ -118,15 +220,20 @@
   // ---------- motion pass ----------
   async function sampleMotion(v, roi, onProgress) {
     const samples = [];
-    let prev = null;
+    const ballFrames = [];
+    let prev = null, prevBall = null;
 
     const push = (t) => {
       const g = grayInROI(v, roi);
-      if (prev && t > (samples.length ? samples[samples.length - 1].t : -1)) {
-        samples.push({ t, e: diffEnergy(g, prev) });
-      }
-      prev = g;
+      const bg = ballGray(v);
+      const fresh = t > (samples.length ? samples[samples.length - 1].t : -1);
+      if (prev && fresh) samples.push({ t, e: diffEnergy(g, prev) });
+      // ball candidates ride along in the same decode pass — a second pass over the video
+      // would double the cost of the slowest stage
+      if (prevBall && fresh) ballFrames.push({ t, blobs: ballBlobs(bg, prevBall) });
+      prev = g; prevBall = bg;
     };
+    samples.ballFrames = ballFrames;
 
     // fast path: playback + rVFC (native cadence, no aliasing)
     const played = await new Promise((res) => {
@@ -161,7 +268,7 @@
     // the same decoded frame; comparing them yields a zero diff and shreds the signal
     // (docs/POSE-PROBE.md #4). Skipping unchanged currentTime gives the same one-sample-per-
     // -frame guarantee rVFC provides, without needing rVFC.
-    samples.length = 0; prev = null;
+    samples.length = 0; ballFrames.length = 0; prev = null; prevBall = null;
     const rafPlayed = await new Promise((res) => {
       let got = 0, settled = false, lastT = -1;
       const finish = (ok) => { if (!settled) { settled = true; res(ok); } };
@@ -185,7 +292,7 @@
 
     // Last resort: deterministic seeking. Correct but slow (~37ms+/frame) — only reached
     // when the browser refuses to play at all.
-    samples.length = 0; prev = null;
+    samples.length = 0; ballFrames.length = 0; prev = null; prevBall = null;
     try { v.pause(); } catch (e) { /* fine */ }
     if (onProgress) onProgress('Watching the round…');
     const fps = 15;                      // enough to catch a swing envelope; keeps seeks bounded
@@ -245,7 +352,7 @@
     });
   }
 
-  function findSwings(samples, peaks) {
+  function findSwings(samples, peaks, ballTracks) {
     if (samples.length < 4) return [];
     const raw = samples.map((s) => s.e);
     const sm = medianSmooth(raw, CFG.MOTION_SMOOTH_WIN);
@@ -278,8 +385,16 @@
       } else merged.push(Object.assign({}, s));
     }
 
+    const tracks = ballTracks || [];
     return merged
       .filter((s) => s.end - s.start >= CFG.MIN_SWING_SEC)
+      // THE GATE: a motion spike is only a swing if a ball arrived around it. Bringing the
+      // bat back to the shoulder moves plenty; no ball ever shows up for it.
+      .filter((s) => {
+        if (!tracks.length) return true;   // no ball track anywhere: fall back to motion
+        return tracks.some((tr) => Math.abs(tr.endT - s.peakT) <= CFG.BALL_NEAR_SEC ||
+          (s.start - CFG.BALL_NEAR_SEC <= tr.endT && tr.endT <= s.end + CFG.BALL_NEAR_SEC));
+      })
       .map((s) => {
         // audio only sharpens contact; its absence never disqualifies a swing (whiffs count)
         const near = peaks.filter((p) => Math.abs(p - s.peakT) <= CFG.AUDIO_CONFIRM_SEC);
@@ -335,7 +450,15 @@
       const [samples, peaks] = [await sampleMotion(v, roi, onProgress), await audioPeaks(fileOrBlob)];
       if (CFG.DEBUG) console.log('[segment] samples', samples.length, 'audio peaks', peaks.length);
 
-      let swings = findSwings(samples, peaks);
+      let ballTracks = linkBallTracks(samples.ballFrames || []);
+      if (CFG.DEBUG) console.log('[segment] ball tracks:', ballTracks.length, ballTracks.slice(0, 12).map((t) => t.startT.toFixed(2) + '->' + t.endT.toFixed(2)));
+      // If we're finding a ball everywhere, we are finding noise — and a gate that matches
+      // everything is worse than no gate, because it looks like it worked.
+      if (ballTracks.length > CFG.BALL_MAX_TRACKS) {
+        if (CFG.DEBUG) console.warn('[segment] ball detector saturated (' + ballTracks.length + ') — ignoring it');
+        ballTracks = [];
+      }
+      let swings = findSwings(samples, peaks, ballTracks);
 
       // ---- caps: 90s OR 15 swings, whichever comes first ----
       let capHit = null;
@@ -364,7 +487,7 @@
         swings, capHit, durationSec,
         meta: {
           sampleCount: samples.length, audioPeaks: peaks.length, usedAudio: peaks.length > 0,
-          primed: !!primed, path: samples.path || 'none',
+          primed: !!primed, path: samples.path || 'none', ballTracks: ballTracks.length,
           rvfc: ('requestVideoFrameCallback' in v), ua: navigator.userAgent.slice(0, 80)
         }
       };

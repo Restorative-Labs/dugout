@@ -49,7 +49,29 @@ window.DUGOUT_CONFIG = {
   MOTION_SMOOTH_WIN: 5,           // median-smooth window (frames) — raw signal is noisy
   SPIKE_ENTER_MULT: 3.0,          // enter a swing above this * baseline
   SPIKE_EXIT_MULT: 1.6,           // ...and leave below this (hysteresis)
-  MIN_SWING_SEC: 0.25,            // shorter spikes are noise, not swings
+  // A youth swing is ~0.1-0.2s of blurred motion; bringing the bat back to the shoulder is
+  // a slower, sustained half-second. At 0.25 this filter rejected the actual swings and
+  // kept the resets — the exact inversion Derell caught on real footage.
+  MIN_SWING_SEC: 0.08,
+
+  // ---- ball detection: the gate that says a swing happened at all ----
+  // Motion energy cannot tell a swing from a bat reset; both are just "movement". A ball
+  // travelling through frame means a pitch happened. No ball, no swing.
+  BALL_W: 480, BALL_H: 270,       // higher res than motion: a ball is ~15px at 1080p, so at
+                                  // the 192x108 motion grid it would be under 2px
+  BALL_MIN_AREA: 2,               // blob area (px at BALL_W x BALL_H)
+  BALL_MAX_AREA: 140,             // bigger than this is the hitter, not the ball
+  BALL_MAX_ASPECT: 3.0,           // motion-blurred balls streak, but not endlessly
+  BALL_MIN_TRACK: 3,              // frames a candidate must persist to be a real track
+  BALL_MAX_JUMP: 110,             // px a ball can travel between frames
+  BALL_MIN_DISP: 45,              // total px travel — kills flickering leaves and noise
+  BALL_NEAR_SEC: 0.7,             // a ball arriving this close to a motion spike = a swing
+  // A first pass with only size/persistence filters produced 754 "tracks" in a 23s clip —
+  // moving grass and leaves. What separates a ball from foliage is not size, it's motion
+  // quality: a ball flies straight and fast, noise jitters in place.
+  BALL_MIN_STRAIGHT: 0.82,        // |net displacement| / path length; a ball is ~1.0
+  BALL_MIN_SPEED: 120,            // px/sec at BALL_W x BALL_H — leaves drift, balls fly
+  BALL_MAX_TRACKS: 40,            // sanity: more than this means we're tracking noise
   MIN_GAP_SEC: 0.9,               // merge spikes closer than this into one swing
   PRE_PAD_SEC: 1.0,               // ~1s pre/post padding per spec
   POST_PAD_SEC: 1.0,
