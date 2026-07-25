@@ -8,6 +8,7 @@
 (function () {
   const CFG = window.DUGOUT_CONFIG;
   const K = {
+    account: 'dugout.account',      // {role, name, createdAt, onboarded} — local-only until DUG-7
     profiles: 'dugout.profiles',
     sessions: 'dugout.sessions',
     philosophies: 'dugout.philosophies',
@@ -84,12 +85,25 @@
   }
 
   const Store = {
-    // ---------- profiles (max 2) ----------
+    // ---------- account (DUG-39; replaced by real accounts in DUG-7) ----------
+    account: () => readJSON(K.account, null),
+    saveAccount: (acc) => { writeJSON(K.account, acc); return acc; },
+    clearAccount: () => localStorage.removeItem(K.account),
+
+    // profile cap depends on who's holding the phone: parent 2, player 1, coach a roster
+    maxProfiles(roleOverride) {
+      const acc = Store.account();
+      const role = roleOverride || (acc && acc.role) || 'parent';
+      return (CFG.MAX_PROFILES_BY_ROLE && CFG.MAX_PROFILES_BY_ROLE[role]) || CFG.MAX_PROFILES;
+    },
+
+    // ---------- profiles ----------
     profiles: () => readJSON(K.profiles, []),
 
-    addProfile(name, ageBand) {
+    addProfile(name, ageBand, roleOverride) {
       const list = Store.profiles();
-      if (list.length >= CFG.MAX_PROFILES) throw new Error('Only ' + CFG.MAX_PROFILES + ' profiles for now.');
+      const cap = Store.maxProfiles(roleOverride);
+      if (list.length >= cap) throw new Error('Only ' + cap + ' profiles on this plan for now.');
       const p = { id: uid('ath'), name: name.trim(), ageBand, createdAt: Date.now() };
       list.push(p);
       writeJSON(K.profiles, list);

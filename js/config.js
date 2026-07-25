@@ -88,7 +88,8 @@ window.DUGOUT_CONFIG = {
   MODEL_URL: 'vendor/movenet/model.json',
 
   // ---- profiles ----
-  MAX_PROFILES: 2,
+  MAX_PROFILES: 2,                       // fallback when no account exists yet
+  MAX_PROFILES_BY_ROLE: { parent: 2, player: 1, coach: 20 },   // DUG-39 local roles
   AGE_BANDS: ['7-10', '11-13', '14-18'],
   AGE_BAND_LABEL: { '7-10': '7–10', '11-13': '11–13', '14-18': '14–18' },
   // ER-05: 7-10 stays environmental/fun-first — no fine mechanical language.

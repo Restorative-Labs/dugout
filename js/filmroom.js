@@ -472,7 +472,7 @@
     return true;
   }
 
-  const AI_OFFLINE_MSG = 'The AI coach runs in the Claude-hosted version of Dugout — this shared demo can\'t reach the AI. Everything else works: the round read, the six checkpoints, chalk, and compare.';
+  const AI_OFFLINE_MSG = 'The AI coach needs a key on this phone: You \u2192 App \u2192 AI coaching key. Everything else works without it \u2014 the round read, the six checkpoints, chalk, and compare.';
 
   btnAnalyze.onclick = async () => {
     vid.pause();

@@ -1,8 +1,13 @@
 // Dugout — the single AI adapter.
 //
 // Every AI call in the app goes through here so the static demo degrades gracefully. With
-// no backend, sessions still segment, detection still runs, and the Round Card still
-// renders — composed from the detection results and library text alone.
+// no key, sessions still segment, detection still runs, and the Round Card still renders —
+// composed from the detection results and library text alone.
+//
+// DUG-40 R6: "prove it works locally before we include it." The adapter now sends proper
+// browser-direct Anthropic headers and takes its key from local device storage, entered in
+// You → App. No key → AI features stay invisible (filmshell gates them), never broken.
+// The key lives ONLY in this device's localStorage; it is never in the repo or a build.
 //
 // Budget rule (spec): ONE call per session for the rollup/verbal rendering. Never one per
 // swing. Deep Dive is the exception — it is explicitly user-initiated, on demand, for a
@@ -11,22 +16,56 @@
   const CFG = window.DUGOUT_CONFIG;
   const ENDPOINT = 'https://api.anthropic.com/v1/messages';
   const MODEL = 'claude-sonnet-4-6';
+  const KEY_KEY = 'dugout.aikey';
 
   let available = null;   // null = untested, true/false once known
 
+  const getKey = () => { try { return localStorage.getItem(KEY_KEY) || ''; } catch (e) { return ''; } };
+
+  function setKey(k) {
+    try {
+      if (k) localStorage.setItem(KEY_KEY, k.trim());
+      else localStorage.removeItem(KEY_KEY);
+    } catch (e) { /* storage full/blocked */ }
+    available = null;   // re-test against the new key
+  }
+
   async function call(body) {
+    const key = getKey();
+    if (!key) { available = false; throw new Error('ai-unavailable'); }
     const res = await fetch(ENDPOINT, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': key,
+        'anthropic-version': '2023-06-01',
+        // Anthropic requires this opt-in header for direct browser/webview calls.
+        'anthropic-dangerous-direct-browser-access': 'true'
+      },
       body: JSON.stringify(Object.assign({ model: MODEL }, body))
     });
     if (!res.ok) {
       available = false;
-      throw new Error('ai-unavailable');
+      throw new Error(res.status === 401 || res.status === 403 ? 'ai-bad-key' : 'ai-unavailable');
     }
     const data = await res.json();
     available = true;
     return (data.content || []).filter((b) => b.type === 'text').map((b) => b.text).join('\n');
+  }
+
+  // Tiny round-trip used by You → App "Test connection".
+  async function testConnection() {
+    try {
+      const t = await call({ max_tokens: 8, messages: [{ role: 'user', content: 'Say only: ok' }] });
+      return { ok: true, msg: 'Connected — the AI coach is live on this phone. (' + (t || 'ok').trim().slice(0, 20) + ')' };
+    } catch (e) {
+      return {
+        ok: false,
+        msg: e.message === 'ai-bad-key' ? 'That key was rejected — check it and try again.'
+          : !getKey() ? 'No key saved yet.'
+            : 'Could not reach the AI. Check the connection and try again.'
+      };
+    }
   }
 
   const parseJSON = (text) => JSON.parse((text || '').replace(/```json|```/g, '').trim());
@@ -77,7 +116,7 @@
 
   async function sessionFeedback(payload) {
     try {
-      if (available === false) return { text: stubSession(payload), source: 'library' };
+      if (!getKey() || available === false) return { text: stubSession(payload), source: 'library' };
       const r = await renderSession(payload);
       return { text: r, source: 'ai' };
     } catch (e) {
@@ -89,6 +128,9 @@
     sessionFeedback,
     call,
     parseJSON,
+    hasKey: () => !!getKey(),
+    setKey,
+    testConnection,
     isAvailable: () => available,
     markUnavailable: () => { available = false; }
   };

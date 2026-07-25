@@ -2,33 +2,31 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
 <title>Dugout · Hitting — Film Room</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="css/app.css">
 <link rel="stylesheet" href="css/session.css">
+<link rel="stylesheet" href="css/shell.css">
 </head>
 <body>
 
+<div id="app">
 <header>
   <div class="brand">
     <h1>Dug<span>out</span></h1>
-    <span class="inning">Hitting · Film Room</span>
+    <span class="inning">Hitting</span>
     <span class="spacer"></span>
     <span class="chip" id="profileChip" hidden></span>
   </div>
-  <nav class="topnav">
-    <a href="#/home" id="navHome" class="on">Rounds</a>
-    <a href="#/film" id="navFilm">Film room</a>
-    <a href="#/progress" id="navProgress">Progress</a>
-    <a href="#/philosophy" id="navPhilosophy">My philosophy</a>
-  </nav>
 </header>
+
+<div id="content">
 
 <!-- ============ HOME / ROUNDS ============ -->
 <main id="view-home">
-  <div class="eyebrow">Who's hitting?</div>
+  <div class="eyebrow" id="homeWho">Who's hitting?</div>
   <div id="profileList" class="plist"></div>
 
   <p class="hint" id="noProfile">Add a hitter to get started. Every round attaches to a profile so his progress builds up over time.</p>
@@ -131,7 +129,7 @@
     <h2 id="rcHeadline"></h2>
     <p id="rcBody"></p>
     <div class="cueline" id="rcCueWrap">
-      <b>Say this to him</b>
+      <b id="rcCueLabel">Say this to him</b>
       <div id="rcCue"></div>
       <button class="mini" id="rcCorrect">That's not how I'd say it</button>
     </div>
@@ -143,6 +141,7 @@
   </div>
 
   <div class="eyebrow">The six checkpoints</div>
+  <p class="hint" style="margin:-4px 2px 10px">Tap any checkpoint for the coaching details behind it.</p>
   <div class="marks" id="rcMarks"></div>
 
   <div class="eyebrow">Every swing</div>
@@ -191,10 +190,10 @@
   <button class="mini" id="phReset" style="margin-top:12px">Reset to DugOut suggested</button>
 </main>
 
-<!-- ============ FILM ROOM (v1) ============ -->
-<main id="view-film" hidden>
-  <!-- swing navigator: only shown when a stored swing is open -->
-  <div class="swingbar" id="swingBar" hidden>
+<!-- ============ FILM ROOM v2 (DUG-40): zero-scroll overlay film space ============ -->
+<main id="view-film" class="filmroom" hidden>
+  <div class="fstage-wrap">
+    <div class="swingbar" id="swingBar" hidden>
     <button class="mini" id="sbBack">‹ Round card</button>
     <span class="sb-mid">
       <button class="mini sb-arrow" id="sbPrev" aria-label="Previous swing">‹</button>
@@ -204,12 +203,12 @@
     <span class="sb-grade" id="sbGrade"></span>
   </div>
 
-  <!-- ============ FILM ============ -->
-  <div class="eyebrow">1 · Film</div>
   <div class="stage" id="stage">
-    <video id="vid" playsinline preload="metadata"></video>
-    <img id="frameImg" alt="Swing frame" hidden>
-    <canvas id="overlay"></canvas>
+    <div class="fmedia">
+      <video id="vid" playsinline preload="metadata"></video>
+      <img id="frameImg" alt="Swing frame" hidden>
+      <canvas id="overlay"></canvas>
+    </div>
     <div class="empty" id="empty">
       <div class="diamond">
         <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#ffb838" stroke-width="1.8" stroke-linecap="round">
@@ -226,12 +225,31 @@
         <button class="btn btn-ghost" id="btnPick">Choose video</button>
       </div>
     </div>
+    <div class="frail" id="frail">
+      <button class="fr-btn" data-fpanel="panel-chalk" aria-label="Chalk tools">
+        <svg viewBox="0 0 24 24"><path d="M4 20l1-4L16 5l3 3L8 19zM14 7l3 3"/></svg><span>Chalk</span>
+      </button>
+      <button class="fr-btn" data-fpanel="panel-compare" aria-label="Compare">
+        <svg viewBox="0 0 24 24"><rect x="3" y="5" width="7.5" height="14" rx="1.5"/><rect x="13.5" y="5" width="7.5" height="14" rx="1.5"/></svg><span>Compare</span>
+      </button>
+      <button class="fr-btn" data-fpanel="panel-learn" aria-label="The six checkpoints">
+        <svg viewBox="0 0 24 24"><path d="M12 3l7 6v6l-7 6-7-6V9z"/><path d="M12 8v8"/></svg><span>Learn</span>
+      </button>
+      <button class="fr-btn" data-fpanel="panel-notes" aria-label="Scouting notes">
+        <svg viewBox="0 0 24 24"><path d="M5 4h14v13l-4 4H5z"/><path d="M15 21v-4h4M8 9h8M8 13h5"/></svg><span>Notes</span>
+      </button>
+      <button class="fr-btn" data-fpanel="panel-ai" id="railAI" hidden aria-label="AI coach">
+        <svg viewBox="0 0 24 24"><path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8zM19 16l.9 2.1L22 19l-2.1.9L19 22l-.9-2.1L16 19l2.1-.9z"/></svg><span>AI</span>
+      </button>
+      <button class="fr-btn star" id="railStar" hidden aria-label="Set as Perfect Swing">
+        <svg viewBox="0 0 24 24"><path d="M12 3l2.7 5.6 6.3.9-4.5 4.3 1 6.2-5.5-3-5.5 3 1-6.2L3 9.5l6.3-.9z"/></svg><span>Perfect</span>
+      </button>
+    </div>
   </div>
   <input type="file" id="fileCapture" accept="video/*" capture="environment">
   <input type="file" id="filePick" accept="video/*">
-
-  <!-- ============ TRANSPORT ============ -->
-  <div class="transport" id="transport" hidden>
+  <div class="ftransport">
+<div class="transport" id="transport" hidden>
     <div class="scrubrow">
       <span class="timecode" id="tc">0.00s</span>
       <input type="range" id="scrub" min="0" max="1000" value="0" step="1" aria-label="Scrub through video">
@@ -254,12 +272,12 @@
     </div>
     <p class="hint">Pause the video, then draw right on the frame. Step one frame at a time to find contact.</p>
   </div>
+  </div>
+  </div><!-- /fstage-wrap -->
 
-  <button class="btn btn-amber deepdive" id="btnDeepDive" hidden>Deep Dive this swing</button>
-
-  <!-- ============ CHALK KIT ============ -->
-  <div class="eyebrow">2 · Chalk it up</div>
-  <div class="kit">
+  <!-- chalk: compact drawer, stage stays visible for drawing -->
+  <div class="fdrawer" id="panel-chalk" hidden>
+<div class="kit">
     <div class="toolrow">
       <button class="tool on" data-tool="line" aria-label="Line tool">
         <svg viewBox="0 0 24 24"><path d="M4 20L20 4"/></svg>Line
@@ -287,11 +305,13 @@
     </div>
     <p class="angle-tip" id="angleTip">Angle tool: tap the <b>end of one line</b>, then the <b>corner</b>, then the <b>end of the other line</b>. Great for spine tilt, bat path, and front-knee bend.</p>
   </div>
+  </div>
 
-  <!-- ============ CHECKPOINTS ============ -->
-  <div class="eyebrow">3 · Run the checkpoints</div>
-
-  <details class="cp" open>
+  <div class="bsheet fpanel" id="panel-learn" hidden>
+    <div class="bs-grab"></div>
+    <div class="bs-head"><h3>The six checkpoints</h3><button class="bs-close" data-fclose aria-label="Close">✕</button></div>
+    <div class="bs-body">
+<details class="cp">
     <summary><div class="base"><span>1</span></div><h3>Stance &amp; setup</h3><span class="chev">▾</span></summary>
     <div class="cp-body">
       <div class="cp-fig">
@@ -411,9 +431,15 @@
       <p class="film"><b>On film:</b> freeze the last frame. Draw a vertical line through his center — is his weight balanced over it, or drifting toward the plate or the dugout? Balance at the finish usually tells you the truth about everything before it.</p>
     </div>
   </details>
+    </div>
+  </div>
 
-  <!-- ============ COMPARE ============ -->
-  <div class="eyebrow">4 · Compare</div>
+  <div class="bsheet fpanel" id="panel-compare" hidden>
+    <div class="bs-grab"></div>
+    <div class="bs-head"><h3>Compare</h3><button class="bs-close" data-fclose aria-label="Close">✕</button></div>
+    <div class="bs-body">
+      <div id="psCompare"></div>
+      <details class="bs-watch"><summary>Compare two video files instead</summary>
   <div class="kit">
     <div class="cgrid">
       <div class="cstage" id="cstageA">
@@ -470,9 +496,17 @@
   <input type="file" id="fileA" accept="video/*">
   <input type="file" id="fileB" accept="video/*">
 
-  <!-- ============ AI COACH ============ -->
-  <div class="eyebrow">5 · Ask the AI coach</div>
-  <div class="kit">
+  
+      </details>
+    </div>
+  </div>
+
+  <div class="bsheet fpanel" id="panel-ai" hidden>
+    <div class="bs-grab"></div>
+    <div class="bs-head"><h3>AI coach</h3><button class="bs-close" data-fclose aria-label="Close">✕</button></div>
+    <div class="bs-body">
+      <button class="btn btn-amber deepdive" id="btnDeepDive" hidden>Deep Dive this swing</button>
+<div class="kit">
     <p class="hint" style="margin-top:0">Load a swing up in the film section, then trim to just the swing: scrub to where he starts his load and tap <b style="color:var(--lights)">Mark start</b>, scrub to his finish and tap <b style="color:var(--lights)">Mark end</b>. The AI reads frames from that window and picks the one fix that matters most.</p>
     <div class="airow" style="margin-top:10px">
       <button class="mark" id="markStart">Mark start</button>
@@ -503,21 +537,101 @@
       </div>
     </div>
   </div>
+    </div>
+  </div>
 
-  <!-- ============ NOTES ============ -->
-  <div class="eyebrow">6 · Scouting notes</div>
-  <div class="notes">
+  <div class="bsheet fpanel" id="panel-notes" hidden>
+    <div class="bs-grab"></div>
+    <div class="bs-head"><h3>Scouting notes</h3><button class="bs-close" data-fclose aria-label="Close">✕</button></div>
+    <div class="bs-body">
+<div class="notes">
     <textarea id="notes" placeholder="What did you see today? One thing to work on next session — keep it to one fix at a time. Kids drown when you give them three."></textarea>
     <div class="row">
       <button class="btn btn-amber" id="saveNotes">Save notes</button>
       <span class="saved" id="savedFlag">Saved ✓</span>
     </div>
   </div>
+    </div>
+  </div>
+</main>
+<div id="filmBackdrop" hidden></div>
 
-  <footer>ONE SWING · ONE FIX · ONE CUE — THAT'S COACHING</footer>
+
+<!-- ============ TEAM (coach dashboard) ============ -->
+<main id="view-team" hidden>
+  <div class="eyebrow">Team board</div>
+  <div id="teamBody"></div>
+</main>
+
+<!-- ============ YOU (profile / hitters / settings) ============ -->
+<main id="view-you" hidden>
+  <div class="eyebrow">You</div>
+  <div id="youBody"></div>
+
+  <div class="sheet" id="youSheet" hidden>
+    <h3 id="ysTitle">Edit</h3>
+    <label class="fl">Name<input id="ysName" maxlength="24"></label>
+    <div id="ysBandWrap">
+      <label class="fl">Age<select id="ysBand">
+        <option value="7-10">7–10</option>
+        <option value="11-13" selected>11–13</option>
+        <option value="14-18">14–18</option>
+      </select></label>
+    </div>
+    <p class="err" id="ysErr"></p>
+    <div class="srow">
+      <button class="btn btn-amber" id="ysSave">Save</button>
+      <button class="btn btn-ghost" id="ysCancel">Cancel</button>
+    </div>
+  </div>
 </main>
 
 <footer>ONE ROUND · SIX CHECKPOINTS · ONE THING TO FIX</footer>
+
+</div><!-- /#content -->
+
+<!-- ============ TAB BAR ============ -->
+<nav class="tabbar" id="tabbar">
+  <a href="#/home" id="navHome" class="on" aria-label="Rounds">
+    <svg viewBox="0 0 24 24"><path d="M4 4h16v9l-8 7-8-7z"/></svg>Rounds
+  </a>
+  <a href="#/film" id="navFilm" aria-label="Film room">
+    <svg viewBox="0 0 24 24"><rect x="3" y="6" width="13" height="12" rx="2"/><path d="M16 10.5l5-3v9l-5-3z"/></svg>Film
+  </a>
+  <a href="#/team" id="navTeam" hidden aria-label="Team">
+    <svg viewBox="0 0 24 24"><circle cx="8.5" cy="8" r="3"/><path d="M3 19c0-3.3 2.4-5.5 5.5-5.5S14 15.7 14 19"/><circle cx="17" cy="9.5" r="2.4"/><path d="M15.5 19c.3-2.8 1.9-4.3 4-4.3 1.6 0 3 .9 3.5 2.8"/></svg>Team
+  </a>
+  <a href="#/progress" id="navProgress" aria-label="Progress">
+    <svg viewBox="0 0 24 24"><path d="M4 20V10m6 10V4m6 16v-7m4 7H2"/></svg>Progress
+  </a>
+  <a href="#/you" id="navYou" aria-label="You">
+    <svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="3.6"/><path d="M5 20c.7-4 3.4-6 7-6s6.3 2 7 6"/></svg>You
+  </a>
+</nav>
+</div><!-- /#app -->
+
+<!-- ============ CHECKPOINT DETAIL SHEET ============ -->
+<div id="sheetBackdrop" hidden></div>
+<div class="bsheet" id="cpSheet" hidden>
+  <div class="bs-grab"></div>
+  <div class="bs-head">
+    <h3 id="cpsTitle">Checkpoint</h3>
+    <span class="bs-status" id="cpsStatus"></span>
+    <button class="bs-close" id="cpsClose" aria-label="Close">✕</button>
+  </div>
+  <div class="bs-body" id="cpsBody"></div>
+</div>
+
+<!-- ============ ONBOARDING (first launch) ============ -->
+<div id="onboard" hidden>
+  <div class="ob-dots" id="obDots"></div>
+  <div id="obBody"></div>
+  <p class="ob-err" id="obErr" hidden></p>
+  <div class="ob-nav">
+    <button class="btn btn-ghost" id="obBack">‹ Back</button>
+    <button class="btn btn-amber" id="obNext">Next ›</button>
+  </div>
+</div>
 
 <script src="vendor/tf-core.min.js"></script>
 <script src="vendor/tf-converter.min.js"></script>
@@ -526,11 +640,13 @@
 <script src="js/config.js"></script>
 <script src="js/library.js"></script>
 <script src="js/store.js"></script>
+<script src="js/shell.js"></script>
 <script src="js/pose.js"></script>
 <script src="js/segment.js"></script>
 <script src="js/evaluate.js"></script>
 <script src="js/ai.js"></script>
 <script src="js/filmroom.js"></script>
+<script src="js/filmshell.js"></script>
 <script src="js/app.js"></script>
 </body>
 </html>

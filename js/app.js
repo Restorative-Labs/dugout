@@ -23,7 +23,8 @@
   const dropURLs = () => { urls.forEach((u) => URL.revokeObjectURL(u)); urls.clear(); };
 
   // ---------------- routing ----------------
-  const VIEWS = ['home', 'capture', 'round', 'progress', 'philosophy', 'film'];
+  const VIEWS = ['home', 'capture', 'round', 'progress', 'philosophy', 'film', 'you', 'team'];
+  const TABS = { home: 'navHome', film: 'navFilm', team: 'navTeam', progress: 'navProgress', you: 'navYou' };
   let route = { name: 'home', arg: null };
 
   function go(name, arg) {
@@ -42,13 +43,24 @@
       const node = $('#view-' + v);
       if (node) node.hidden = v !== route.name;
     });
-    $('#navFilm').classList.toggle('on', route.name === 'film');
-    $('#navHome').classList.toggle('on', route.name === 'home');
-    window.scrollTo(0, 0);
+    // tab highlight — round/capture belong to Rounds, philosophy lives under You
+    const tabView = { capture: 'home', round: 'home', philosophy: 'you' }[route.name] || route.name;
+    Object.keys(TABS).forEach((v) => {
+      const a = $('#' + TABS[v]);
+      if (a) a.classList.toggle('on', v === tabView);
+    });
+    const sc = $('#content');
+    if (sc) sc.scrollTo(0, 0);
+    // film space is a fixed, zero-scroll layout (DUG-40); everything else scrolls
+    if (sc) sc.classList.toggle('filmlock', route.name === 'film');
+    if (route.name !== 'film' && window.DugoutFilmShell) window.DugoutFilmShell.closeAll(true);
+    closeCpSheet();
     if (route.name === 'home') renderHome();
     if (route.name === 'round') renderRound(route.arg);
     if (route.name === 'progress') renderProgress();
     if (route.name === 'philosophy') renderPhilosophy();
+    if (route.name === 'you') window.DugoutShell.renderYou();
+    if (route.name === 'team') window.DugoutShell.renderTeam();
   }
   window.addEventListener('hashchange', render);
 
@@ -81,7 +93,7 @@
       wrap.appendChild(row);
     });
 
-    $('#addProfile').hidden = profiles.length >= CFG.MAX_PROFILES;
+    $('#addProfile').hidden = profiles.length >= Store.maxProfiles();
     $('#noProfile').hidden = profiles.length > 0;
     $('#roundActions').hidden = profiles.length === 0;
 
@@ -396,6 +408,7 @@
     } else cap.hidden = true;
 
     // ---- verbal first: the correction is the headline ----
+    $('#rcCueLabel').textContent = window.DugoutShell.cueLabel();
     $('#rcCelebrate').hidden = !fb.celebrate;
     $('#rcHeadline').textContent = fb.headline || '';
     $('#rcBody').textContent = fb.body || '';
@@ -415,17 +428,21 @@
     $('#rcDrillWrap').hidden = !(fb.drills || []).length;
 
     // ---- six checkpoints: pass/fail only, no numbers anywhere ----
+    // DUG-39 #5: every checkpoint is tappable — the coaching detail behind each mark,
+    // not just the single priority focus.
     const marks = $('#rcMarks');
     marks.innerHTML = '';
     CFG.CHECKPOINTS.forEach((cp) => {
       const e = (s.evaluation || {})[cp] || { pass: true, assessed: false };
       const isFocus = s.priorityFocus === cp;
-      const card = el('div', 'mark' + (e.pass ? ' pass' : ' fail') + (isFocus ? ' focus' : '') + (e.assessed ? '' : ' na'));
+      const card = el('button', 'mark' + (e.pass ? ' pass' : ' fail') + (isFocus ? ' focus' : '') + (e.assessed ? '' : ' na'));
       card.innerHTML =
         '<span class="mk">' + (!e.assessed ? '·' : e.pass ? '✓' : '✗') + '</span>' +
         '<span class="mlabel">' + CFG.CHECKPOINT_LABEL[cp] + '</span>' +
         (isFocus ? '<span class="mfocus">work on this</span>' : '') +
-        (!e.assessed ? '<span class="mna">not assessed</span>' : '');
+        (!e.assessed ? '<span class="mna">not assessed</span>' : '') +
+        (e.assessed ? '<span class="mgo">' + (e.pass ? 'details ›' : 'the fix ›') + '</span>' : '');
+      card.onclick = () => openCpSheet(s, cp);
       marks.appendChild(card);
     });
 
@@ -487,6 +504,99 @@
     $('#slangCancel').onclick = () => { $('#slangSheet').hidden = true; };
   }
 
+  // ---- checkpoint detail sheet (DUG-39 #5) ----
+  // Everything shown here is already computed and stored on the session: faultIds per
+  // checkpoint from the rollup, cues via the active philosophy, drills age-gated. The
+  // sheet just makes each mark's evidence reviewable instead of only the priority focus.
+  function openCpSheet(session, cp) {
+    const e = (session.evaluation || {})[cp] || { pass: true, assessed: false, faultIds: [] };
+    const profile = Store.profile(session.profileId);
+    const band = profile ? profile.ageBand : '11-13';
+    const phi = Store.activePhilosophy();
+    const swings = (session.swings || []).length;
+
+    $('#cpsTitle').textContent = CFG.CHECKPOINT_LABEL[cp];
+    const st = $('#cpsStatus');
+    st.className = 'bs-status ' + (!e.assessed ? 'na' : e.pass ? 'ok' : 'work');
+    st.textContent = !e.assessed ? 'Not assessed' : e.pass ? 'Clean ✓' : 'Work on it';
+
+    const body = $('#cpsBody');
+    body.innerHTML = '';
+
+    if (session.priorityFocus === cp) {
+      body.appendChild(el('div', 'bs-focus', '★ Today’s “work on this next”'));
+    }
+
+    // what the library watches for at this checkpoint, for the expandable footer
+    const watched = L.tips.filter((t) => t.checkpoint === cp && t.ageBands.indexOf(band) >= 0);
+
+    if (!e.assessed) {
+      const p = el('p', 'bs-clean');
+      p.textContent = 'Nothing measurable at ' + CFG.CHECKPOINT_LABEL[cp] +
+        ' this round — usually an angle thing. Film from the side, waist height, whole body in frame, and this checkpoint fills in.';
+      body.appendChild(p);
+    } else if (e.pass) {
+      const p = el('div', 'bs-clean');
+      p.innerHTML = '<span class="bigok">✓</span>' +
+        esc(CFG.CHECKPOINT_LABEL[cp]) + ' held up across ' + (swings === 1 ? 'the swing' : 'all ' + swings + ' swings') +
+        ' — nothing to fix here today. Rounds where it slips will show exactly what to work on.';
+      body.appendChild(p);
+    } else {
+      const tips = (e.faultIds || []).map(Ev.tipById).filter(Boolean);
+      if (!tips.length) {
+        const p = el('p', 'bs-clean');
+        p.textContent = 'The pattern showed up across the round, but no single fault stood out clearly enough to name. Another round usually sharpens the read.';
+        body.appendChild(p);
+      }
+      tips.forEach((tip) => {
+        const cue = Ev.renderCue(tip, phi, band);
+        const drills = Ev.drillsFor(tip, band);
+        const card = el('div', 'bs-tip');
+        card.innerHTML =
+          '<h4>' + esc(tip.fault) + '</h4>' +
+          '<div class="fix">' + esc(tip.tip) + '</div>' +
+          (cue && cue.text ? '<div class="cueline"><b>' + esc(window.DugoutShell.cueLabel()) + '</b><div>“' + esc(cue.text) + '”</div></div>' : '') +
+          (drills.length ? '<h5>Drills to try</h5><ul>' + drills.map((d) =>
+            '<li>' + esc(d.name) + ' <span class="rung">· ' + esc(d.rung) + '</span></li>').join('') + '</ul>' : '');
+        body.appendChild(card);
+      });
+      body.appendChild(el('p', 'bs-ev',
+        'Called from a pattern across the round — never from one swing (that’s a Dugout rule).'));
+
+      // jump straight to the film where it showed up
+      const evId = (e.evidenceSwingIds || [])[0];
+      if (evId && (session.swings || []).some((sw) => sw.id === evId)) {
+        const b = el('button', 'btn btn-ghost bs-film', '▶ See it on film');
+        b.onclick = () => { closeCpSheet(); openSwing(session.id, evId); };
+        body.appendChild(b);
+      }
+    }
+
+    if (watched.length) {
+      const d = el('details', 'bs-watch');
+      d.innerHTML = '<summary>What Dugout watches for here</summary><ul>' +
+        watched.map((t) => '<li>' + esc(t.fault) + (t.detector ? '' : ' <span title="needs ball/bat tracking">◐</span>') + '</li>').join('') + '</ul>';
+      body.appendChild(d);
+    }
+
+    $('#sheetBackdrop').hidden = false;
+    $('#cpSheet').hidden = false;
+    requestAnimationFrame(() => {
+      $('#sheetBackdrop').classList.add('show');
+      $('#cpSheet').classList.add('show');
+    });
+  }
+
+  function closeCpSheet() {
+    const sheet = $('#cpSheet'), back = $('#sheetBackdrop');
+    if (!sheet || sheet.hidden) return;
+    sheet.classList.remove('show');
+    back.classList.remove('show');
+    setTimeout(() => { sheet.hidden = true; back.hidden = true; }, 300);
+  }
+  $('#cpsClose').onclick = closeCpSheet;
+  $('#sheetBackdrop').onclick = closeCpSheet;
+
   // ---- open one swing in the film room (Chalk available) ----
   // Which swing the film room is showing, so it can move between swings in place instead
   // of sending you back to the Rounds tab for every clip.
@@ -508,6 +618,7 @@
       sessionId, swingId,
       onDeepDive: () => deepDive(sessionId, swingId)
     });
+    window.DugoutFilmShell.onSwingOpened(s, swingId);
     renderSwingBar();
   }
 
@@ -767,11 +878,13 @@
     // drop the stored-swing context so the navigator bar doesn't linger.
     reviewing = null;
     window.DugoutFilm.loadVideoMode();
+    window.DugoutFilmShell.onVideoMode();
     renderSwingBar();
     go('film');
   };
   $('#navProgress').onclick = (e) => { e.preventDefault(); go('progress'); };
-  $('#navPhilosophy').onclick = (e) => { e.preventDefault(); go('philosophy'); };
+  $('#navTeam').onclick = (e) => { e.preventDefault(); go('team'); };
+  $('#navYou').onclick = (e) => { e.preventDefault(); go('you'); };
 
   render();
   window.DugoutApp = { go, activeProfile, runRound, render };

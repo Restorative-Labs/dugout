@@ -26,6 +26,11 @@ final class ViewController: UIViewController {
         webView.backgroundColor = Self.fieldGreen
         webView.scrollView.backgroundColor = Self.fieldGreen
         webView.scrollView.contentInsetAdjustmentBehavior = .never
+        // The web app is a fixed shell (UX v2): the page itself never scrolls, only inner
+        // panes do — so the outer scroll view must never bounce or rubber-band.
+        webView.scrollView.bounces = false
+        webView.scrollView.alwaysBounceVertical = false
+        webView.scrollView.alwaysBounceHorizontal = false
 
         #if DEBUG
         // Inspect from Safari on your Mac: Develop menu → your iPhone → DugOut.
@@ -34,8 +39,10 @@ final class ViewController: UIViewController {
 
         view.addSubview(webView)
         webView.translatesAutoresizingMaskIntoConstraints = false
+        // Edge-to-edge: the web app declares viewport-fit=cover and pads its own header
+        // and tab bar with env(safe-area-inset-*), so the webview owns the whole screen.
         NSLayoutConstraint.activate([
-            webView.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
+            webView.topAnchor.constraint(equalTo: view.topAnchor),
             webView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             webView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
             webView.bottomAnchor.constraint(equalTo: view.bottomAnchor)
@@ -84,6 +91,35 @@ extension ViewController: WKUIDelegate {
                  type: WKMediaCaptureType,
                  decisionHandler: @escaping (WKPermissionDecision) -> Void) {
         decisionHandler(.grant)
+    }
+
+    // Native panels for JS alert/confirm/prompt — without these, WKWebView silently
+    // swallows alert() and makes confirm() always return false.
+    func webView(_ webView: WKWebView, runJavaScriptAlertPanelWithMessage message: String,
+                 initiatedByFrame frame: WKFrameInfo, completionHandler: @escaping () -> Void) {
+        let a = UIAlertController(title: nil, message: message, preferredStyle: .alert)
+        a.addAction(UIAlertAction(title: "OK", style: .default) { _ in completionHandler() })
+        present(a, animated: true)
+    }
+
+    func webView(_ webView: WKWebView, runJavaScriptConfirmPanelWithMessage message: String,
+                 initiatedByFrame frame: WKFrameInfo, completionHandler: @escaping (Bool) -> Void) {
+        let a = UIAlertController(title: nil, message: message, preferredStyle: .alert)
+        a.addAction(UIAlertAction(title: "Cancel", style: .cancel) { _ in completionHandler(false) })
+        a.addAction(UIAlertAction(title: "OK", style: .default) { _ in completionHandler(true) })
+        present(a, animated: true)
+    }
+
+    func webView(_ webView: WKWebView, runJavaScriptTextInputPanelWithPrompt prompt: String,
+                 defaultText: String?, initiatedByFrame frame: WKFrameInfo,
+                 completionHandler: @escaping (String?) -> Void) {
+        let a = UIAlertController(title: nil, message: prompt, preferredStyle: .alert)
+        a.addTextField { $0.text = defaultText }
+        a.addAction(UIAlertAction(title: "Cancel", style: .cancel) { _ in completionHandler(nil) })
+        a.addAction(UIAlertAction(title: "OK", style: .default) { [weak a] _ in
+            completionHandler(a?.textFields?.first?.text)
+        })
+        present(a, animated: true)
     }
 }
 
