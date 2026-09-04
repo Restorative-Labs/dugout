@@ -1,3 +1,5 @@
 .DS_Store
 # local test footage stays out of the repo (hundreds of MB)
 media/
+__pycache__/
+*.pyc

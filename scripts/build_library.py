@@ -4,12 +4,47 @@ The spreadsheet is the source of truth (DUG-37). This script is the only thing t
 should ever write library.js, so a corrected sheet can be re-converted verbatim.
 """
 import json
+import os
 import re
+from pathlib import Path
 
 import openpyxl
 
-SRC = "/Users/derelljenkins/Library/CloudStorage/OneDrive-Personal/Restorative Labs LLC/04 — Dugout/DugOut_Tip_Library_Seed_v0.2.xlsx"
-OUT = "/Users/derelljenkins/Library/CloudStorage/OneDrive-Personal/Restorative Labs LLC/04 — Dugout/dugout/js/library.js"
+# OUT is always inside the repo, derived from this file's location.
+# SRC (the tip-library spreadsheet) lives in the OneDrive assets workspace, which is a
+# SEPARATE tree from the repo -- code lives in ~/code/dugout, assets stay in OneDrive.
+# Resolution order, first hit wins:
+#   1. $DUGOUT_ASSETS               -- explicit override, e.g. a different machine
+#   2. <repo>/../Product & Specs    -- legacy layout, repo still inside the workspace
+#   3. the known OneDrive path      -- current default on Derell's Mac
+SHEET = "DugOut_Tip_Library_Seed_v0.2.xlsx"
+
+REPO = Path(__file__).resolve().parents[1]
+OUT = str(REPO / "js" / "library.js")
+
+_ONEDRIVE = Path.home() / (
+    "Library/CloudStorage/OneDrive2-RestorativeLabsLLC/"
+    "Restorative Labs - Documents/04 \u2014 Dugout"
+)
+
+_candidates = [
+    Path(os.environ["DUGOUT_ASSETS"]) if os.environ.get("DUGOUT_ASSETS") else None,
+    REPO.parent,
+    _ONEDRIVE,
+]
+
+SRC = None
+for base in _candidates:
+    if base and (base / "Product & Specs" / SHEET).is_file():
+        SRC = str(base / "Product & Specs" / SHEET)
+        break
+if SRC is None:
+    tried = "\n  ".join(str(b) for b in _candidates if b)
+    raise SystemExit(
+        f"Could not find '{SHEET}' under a 'Product & Specs' folder.\n"
+        f"Looked in:\n  {tried}\n"
+        f"Set DUGOUT_ASSETS to the folder that contains 'Product & Specs'."
+    )
 
 CHECKPOINT_KEY = {
     "Stance": "stance",

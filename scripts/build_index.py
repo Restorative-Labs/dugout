@@ -1,8 +1,17 @@
 import io
 import os
+from pathlib import Path
 
-ROOT = "/Users/derelljenkins/Library/CloudStorage/OneDrive-Personal/Restorative Labs LLC/04 — Dugout/dugout"
-SCRATCH = "/private/tmp/claude-501/-Users-derelljenkins-Library-CloudStorage-OneDrive-Personal-Restorative-Labs-LLC-04---Dugout/7368adf0-28b5-43b5-a85e-d8e9b0b656ea/scratchpad"
+# Paths are derived from this file's location so the script survives folder moves
+# and OneDrive account changes. Layout assumed:
+#   <workspace>/dugout/scripts/build_index.py   <- this file
+#   <workspace>/dugout/                         <- ROOT (the git repo)
+ROOT = str(Path(__file__).resolve().parents[1])
+
+# SCRATCH held the one-shot `main_inner.html` fragment used when index.html was first
+# generated; that temp dir is long gone. Set DUGOUT_SCRATCH to a folder containing
+# main_inner.html before re-running, or drop the file in dugout/scripts/_scratch/.
+SCRATCH = os.environ.get("DUGOUT_SCRATCH", os.path.join(ROOT, "scripts", "_scratch"))
 
 main_inner = io.open(os.path.join(SCRATCH, "main_inner.html"), encoding="utf-8").read()
 
