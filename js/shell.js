@@ -249,14 +249,27 @@
   }
 
   function obVoice(body) {
-    body.appendChild(el('div', 'ob-q', 'How should corrections sound?'));
-    body.appendChild(el('p', 'ob-help', 'Dugout grades from a vetted tip library either way — this only sets the coaching voice. Fine-tune any time in You → My philosophy.'));
+    const coach = ob.roleChoice === 'coach';
+    body.appendChild(el('div', 'ob-q', coach ? 'Your correction rules' : 'How should corrections sound?'));
+    body.appendChild(el('p', 'ob-help', coach
+      ? 'Dugout grades from a vetted tip library — your rules decide which tips are in play and how they’re said. Creating your own is included with your Coach plan.'
+      : 'Dugout grades from a vetted tip library either way — this only sets the coaching voice. Fine-tune any time in You → Correction rules.'));
     const wrap = el('div', 'ob-voice');
 
     const sug = el('button', 'preset big' + (ob.voice === undefined || ob.voice === null ? ' on' : ''));
     sug.innerHTML = '<b>DugOut Suggested · recommended</b><small>The library’s own baseline — proven tips, plain words. Works great out of the box.</small>';
     sug.onclick = () => { ob.voice = null; obRender(); };
     wrap.appendChild(sug);
+
+    if (coach) {
+      // DUG-40 follow-up: coaches get the full create-your-own path IN the welcome
+      // journey, free with the plan. Parents meet it later as the paid add-on card.
+      const own = el('button', 'preset big' + (ob.voice === 'custom' ? ' on' : ''));
+      own.innerHTML = '<b>Create my own correction rules · free with Coach</b>' +
+        '<small>Pick the tips you actually coach, red-line what you never want said, and put the cues in your words — about 5 minutes of tapping, right after setup.</small>';
+      own.onclick = () => { ob.voice = 'custom'; obRender(); };
+      wrap.appendChild(own);
+    }
 
     (L.schools || []).forEach((sc) => {
       const b = el('button', 'preset big' + (ob.voice && ob.voice.preset === sc.preset ? ' on' : ''));
@@ -274,7 +287,9 @@
       '<span class="big">⚾</span>' +
       '<h2>You’re set, ' + esc(ob.name.trim() || 'coach') + '.</h2>' +
       '<p>' + (r === 'coach'
-        ? 'Film any athlete’s round — Dugout finds each swing, grades the six checkpoints, and keeps every athlete’s progress on your Team board.'
+        ? (ob.voice === 'custom'
+          ? 'Your correction-rules builder opens next — about 5 minutes of tapping, then every read your roster gets is in your voice.'
+          : 'Film any athlete’s round — Dugout finds each swing, grades the six checkpoints, and keeps every athlete’s progress on your Team board.')
         : r === 'player'
           ? 'Film a round — Dugout finds each swing, grades your six checkpoints, and gives you the one thing to fix next.'
           : 'Film a round — Dugout finds each swing, grades the six checkpoints, and gives you the one thing to say in the car ride home.') + '</p>';
@@ -288,6 +303,7 @@
   }
 
   function applyVoiceChoice() {
+    if (ob.voice === 'custom') return;     // coach builds their own — wizard opens after finish
     if (!ob.voice) {                       // OOB: DugOut Suggested
       Store.setActivePhilosophy('dugout-suggested');
       return;
@@ -342,7 +358,11 @@
     node.classList.add('out');
     setTimeout(() => { node.hidden = true; node.classList.remove('out'); }, 320);
     applyRole();
-    if (window.DugoutApp) { window.DugoutApp.go('home'); window.DugoutApp.render(); }
+    if (window.DugoutApp) {
+      // a coach who chose "create my own" lands straight in the rules builder
+      window.DugoutApp.go(ob.voice === 'custom' ? 'philosophy' : 'home');
+      window.DugoutApp.render();
+    }
   }
 
   // ---------------- You: profile / hitters / settings ----------------

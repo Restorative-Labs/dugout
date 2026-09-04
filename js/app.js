@@ -205,8 +205,11 @@
       // per-swing grade: terse, from how many faults that swing showed
       session.swings.forEach((s, i) => {
         const r = swingResults[i];
-        if (!r.ok) { s.grade = '—'; return; }
-        const hits = Object.values(r.faults).filter((f) => f.conf >= Ev.FAULT_PRESENT).length;
+        if (!r.ok) { s.grade = '—'; s.faultIds = []; return; }
+        // DUG-42: persist which faults THIS swing showed, so the film viewer can flag
+        // the exact checkpoints per swing (the rollup only kept round-level evidence).
+        s.faultIds = Object.keys(r.faults).filter((k) => r.faults[k].conf >= Ev.FAULT_PRESENT);
+        const hits = s.faultIds.length;
         s.grade = hits === 0 ? 'Clean' : hits === 1 ? 'Close' : 'Work';
       });
 
@@ -888,4 +891,20 @@
 
   render();
   window.DugoutApp = { go, activeProfile, runRound, render };
+
+  // App is interactive — retire the splash (it painted instantly while the pose
+  // bundles parsed; see the inline styles in index.html).
+  // Min-hold: on fast boots the app is ready in <100ms and the splash was gone
+  // before a single frame showed (see "Splash Page.MP4", Jul 25). Keep the brand
+  // moment on screen ~1.2s from page start; slow boots are unaffected (already >1.2s).
+  const splash = $('#splash');
+  if (splash) {
+    const MIN_SPLASH_MS = 1200;
+    const shownFor = performance.now();
+    const wait = Math.max(0, MIN_SPLASH_MS - shownFor);
+    setTimeout(() => {
+      splash.classList.add('done');
+      setTimeout(() => splash.remove(), 600);
+    }, wait);
+  }
 })();

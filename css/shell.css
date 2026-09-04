@@ -373,6 +373,60 @@ body[data-role=player] #addProfile { display: none; }
 #filmBackdrop.show { opacity: 1; }
 #filmBackdrop[hidden] { display: none; }
 
+/* per-swing checkpoint indicators (DUG-42) — "areas that require the tip are noticeable" */
+.swingdots {
+  position: absolute; left: 8px; bottom: 8px; z-index: 7;
+  display: flex; gap: 4px; flex-wrap: wrap; max-width: calc(100% - 76px);
+  cursor: pointer;
+}
+.swingdots[hidden] { display: none; }
+.swingdots .sd {
+  display: inline-flex; align-items: center; gap: 4px;
+  background: rgba(9, 22, 15, .82); border: 1px solid rgba(42, 68, 51, .8);
+  border-radius: 999px; padding: 4px 8px 4px 6px;
+  font-family: 'Oswald', sans-serif; font-size: 9px; font-weight: 600;
+  letter-spacing: .07em; text-transform: uppercase; color: var(--chalk-dim);
+}
+.swingdots .sd i { font-style: normal; font-size: 11px; }
+.swingdots .sd.pass i { color: #3ddc84; }
+.swingdots .sd.fail { border-color: var(--lights); color: var(--chalk); }
+.swingdots .sd.fail i { color: var(--lights); }
+.swingdots .sd.hot { background: rgba(255, 184, 56, .18); box-shadow: 0 0 0 1px var(--lights); }
+@media (prefers-reduced-motion: no-preference) {
+  .swingdots .sd.hot { animation: sdpulse 1.6s ease-in-out 3; }
+  @keyframes sdpulse { 50% { box-shadow: 0 0 0 3px rgba(255, 184, 56, .45); } }
+}
+
+/* Learn rail notification badge */
+.fr-btn { position: relative; }
+.fr-btn .badge {
+  position: absolute; top: -5px; right: -5px;
+  min-width: 18px; height: 18px; border-radius: 999px;
+  background: var(--lights); color: #1a1206;
+  font-family: 'Oswald', sans-serif; font-size: 11px; font-weight: 700;
+  display: flex; align-items: center; justify-content: center; padding: 0 4px;
+}
+.fr-btn.noti { border-color: var(--lights); color: var(--lights); }
+
+/* flagged checkpoint sections in Learn + injected coach tips */
+.cp-flag { border-color: var(--lights); }
+.cp-flag summary h3::after { content: " ●"; color: var(--lights); font-size: 11px; vertical-align: 3px; }
+.coachtip {
+  border: 1px solid var(--lights); border-radius: 10px;
+  background: rgba(255, 184, 56, .07); padding: 12px; margin-bottom: 12px;
+}
+.coachtip > b {
+  font-family: 'Oswald', sans-serif; font-size: 10px; font-weight: 600;
+  letter-spacing: .16em; text-transform: uppercase; color: var(--lights);
+  display: block; margin-bottom: 6px;
+}
+.coachtip .ct-item { margin-bottom: 8px; }
+.coachtip .ct-item:last-child { margin-bottom: 0; }
+.coachtip .ct-fault { font-family: 'Oswald', sans-serif; font-size: 13.5px; letter-spacing: .03em; display: block; }
+.coachtip .ct-item p { font-size: 13px; line-height: 1.55; margin: 3px 0 5px; }
+.coachtip .ct-cue { font-style: italic; font-size: 14px; color: var(--chalk); border-left: 3px solid var(--lights); padding: 4px 10px; margin: 6px 0; }
+.coachtip .ct-drills { font-size: 11.5px; color: var(--chalk-dim); }
+
 /* toast for Perfect Swing confirmations */
 .filmtoast {
   position: absolute; left: 50%; bottom: 18px; transform: translateX(-50%) translateY(8px);

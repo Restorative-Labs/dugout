@@ -4,13 +4,68 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
 <title>Dugout · Hitting — Film Room</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="css/app.css">
 <link rel="stylesheet" href="css/session.css">
 <link rel="stylesheet" href="css/shell.css">
+<style>
+/* Fonts — self-hosted woff2 (repo /fonts). No network, no render-blocking Google
+   Fonts CSS: the splash below paints immediately even fully offline (DUG-40 splash bug).
+   font-display:swap = text shows in the fallback face instantly, swaps when loaded. */
+@font-face{font-family:'Oswald';font-style:normal;font-weight:500;font-display:swap;src:url('css/fonts/oswald-latin-500-normal.woff2') format('woff2')}
+@font-face{font-family:'Oswald';font-style:normal;font-weight:600;font-display:swap;src:url('css/fonts/oswald-latin-600-normal.woff2') format('woff2')}
+@font-face{font-family:'Oswald';font-style:normal;font-weight:700;font-display:swap;src:url('css/fonts/oswald-latin-700-normal.woff2') format('woff2')}
+@font-face{font-family:'Inter';font-style:normal;font-weight:400;font-display:swap;src:url('css/fonts/inter-latin-400-normal.woff2') format('woff2')}
+@font-face{font-family:'Inter';font-style:normal;font-weight:500;font-display:swap;src:url('css/fonts/inter-latin-500-normal.woff2') format('woff2')}
+@font-face{font-family:'Inter';font-style:normal;font-weight:600;font-display:swap;src:url('css/fonts/inter-latin-600-normal.woff2') format('woff2')}
+@font-face{font-family:'Inter';font-style:normal;font-weight:700;font-display:swap;src:url('css/fonts/inter-latin-700-normal.woff2') format('woff2')}
+/* Splash — inline in <head> so it paints the instant the page exists, before the
+   TF.js/pose bundles (the "long green pause") even start parsing. */
+#splash{position:fixed;inset:0;z-index:100;display:flex;flex-direction:column;align-items:center;
+  justify-content:center;gap:0;background:radial-gradient(120% 60% at 50% -10%,#173523 0%,#0d1f16 60%),#0d1f16;
+  padding:24px;transition:opacity .5s ease}
+#splash.done{opacity:0;pointer-events:none}
+#splash .sp-plate{width:74px;height:74px;border:2px solid #ffb838;border-radius:16px;background:#12271b;
+  display:flex;align-items:center;justify-content:center;margin-bottom:20px}
+#splash h1{font-family:'Oswald',sans-serif;font-weight:700;font-size:42px;letter-spacing:.06em;
+  text-transform:uppercase;color:#f5f2e8;line-height:1}
+#splash h1 span{color:#ffb838}
+#splash .sp-tag{margin-top:9px;font-family:'Oswald',sans-serif;font-size:12px;font-weight:600;
+  letter-spacing:.32em;text-transform:uppercase;color:#ffb838}
+/* the loading thingy — one slot (#spBall), swappable later for a hit/pitch animation */
+#spBall{margin-top:38px;width:44px;height:44px;animation:spspin 1.15s linear infinite}
+@keyframes spspin{to{transform:rotate(360deg)}}
+@media (prefers-reduced-motion:reduce){#spBall{animation:none}}
+#splash .sp-load{margin-top:12px;font-size:11px;letter-spacing:.22em;text-transform:uppercase;
+  color:#b9b5a6;font-family:'Oswald',sans-serif}
+#splash .sp-by{position:absolute;bottom:calc(18px + env(safe-area-inset-bottom,0px));left:0;right:0;
+  text-align:center;font-size:10px;letter-spacing:.24em;text-transform:uppercase;color:#6d7a6f}
+</style>
+
 </head>
 <body>
+
+<div id="splash">
+  <div class="sp-plate">
+    <svg width="42" height="42" viewBox="0 0 48 48"><path d="M8 8h32v18L24 42 8 26z" fill="none" stroke="#f5f2e8" stroke-width="2.5" stroke-linejoin="round"/><text x="24" y="26" text-anchor="middle" font-family="Oswald,sans-serif" font-weight="700" font-size="17" fill="#ffb838">D</text></svg>
+  </div>
+  <h1>Dug<span>out</span></h1>
+  <div class="sp-tag">Film · Freeze · Fix</div>
+  <svg id="spBall" viewBox="0 0 44 44" aria-label="Loading">
+    <circle cx="22" cy="22" r="20" fill="#f5f2e8"/>
+    <path d="M10 5.5 A26 26 0 0 1 10 38.5" fill="none" stroke="#d94f3d" stroke-width="2.2"/>
+    <path d="M34 5.5 A26 26 0 0 0 34 38.5" fill="none" stroke="#d94f3d" stroke-width="2.2"/>
+    <g stroke="#d94f3d" stroke-width="1.6" stroke-linecap="round">
+      <path d="M9.5 12l4 1.4M9 17l4 .7M8.8 22l4.1 0M9 27l4-.7M9.5 32l4-1.4"/>
+      <path d="M34.5 12l-4 1.4M35 17l-4 .7M35.2 22l-4.1 0M35 27l-4-.7M34.5 32l-4-1.4"/>
+    </g>
+  </svg>
+  <div class="sp-load" id="spStatus">Chalking the lines…</div>
+  <div class="sp-by">Powered by Restorative Labs</div>
+</div>
+<script>
+// Failsafe: if boot ever hangs, don't trap the user behind the splash.
+setTimeout(function(){var s=document.getElementById('splash');if(s&&!s.classList.contains('done')){s.classList.add('done');setTimeout(function(){s.remove()},600);}},9000);
+</script>
 
 <div id="app">
 <header>

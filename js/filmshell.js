@@ -193,6 +193,107 @@
     draw();
   }
 
+  // ---------------- DUG-42: per-swing indicators + contextual Learn ----------------
+  const Ev = () => window.DugoutEvaluate;
+  const Lb = () => window.DUGOUT_LIBRARY;
+
+  // Which checkpoints are flagged for the round, and for THIS swing specifically.
+  function swingContext(session, swingId) {
+    const swing = (session.swings || []).find((s) => s.id === swingId);
+    const out = { round: {}, swing: {}, count: 0 };
+    CFG.CHECKPOINTS.forEach((cp) => {
+      const e = (session.evaluation || {})[cp];
+      const roundFail = !!(e && e.assessed && !e.pass);
+      out.round[cp] = e ? (e.assessed ? (e.pass ? 'pass' : 'fail') : 'na') : 'na';
+      let thisSwing = false;
+      if (roundFail && swing) {
+        if (swing.faultIds && swing.faultIds.length) {
+          thisSwing = swing.faultIds.some((id) => {
+            const t = Ev().tipById(id);
+            return t && t.checkpoint === cp;
+          });
+        } else {
+          // pre-DUG-42 sessions: fall back to round evidence
+          thisSwing = (e.evidenceSwingIds || []).indexOf(swing.id) >= 0 || true;
+        }
+      }
+      out.swing[cp] = thisSwing;
+      if (roundFail) out.count++;
+    });
+    return out;
+  }
+
+  function renderIndicators(session, swingId) {
+    let strip = $('#swingDots');
+    if (!strip) {
+      strip = el('div', 'swingdots');
+      strip.id = 'swingDots';
+      strip.onclick = () => openPanel('panel-learn');
+      $('#view-film .fstage-wrap').appendChild(strip);
+    }
+    const ctx = swingContext(session, swingId);
+    strip.innerHTML = CFG.CHECKPOINTS.map((cp) => {
+      const st = ctx.round[cp];
+      const hot = ctx.swing[cp];
+      return '<span class="sd ' + st + (hot ? ' hot' : '') + '">' +
+        '<i>' + (st === 'pass' ? '✓' : st === 'fail' ? '✗' : '·') + '</i>' +
+        esc(CFG.CHECKPOINT_LABEL[cp]) + '</span>';
+    }).join('');
+    strip.hidden = false;
+
+    // Learn rail lights up with the number of sections carrying a coach's tip
+    setLearnBadge(ctx.count);
+    injectCoachTips(session);
+  }
+
+  function setLearnBadge(n) {
+    const learn = $('.fr-btn[data-fpanel="panel-learn"]');
+    let b = learn.querySelector('.badge');
+    if (!n) { if (b) b.remove(); learn.classList.remove('noti'); return; }
+    if (!b) { b = el('span', 'badge'); learn.appendChild(b); }
+    b.textContent = n;
+    learn.classList.add('noti');
+  }
+
+  // Inside Learn: flag the failed sections and put the coach's tip for this round at the
+  // top of each — fault → fix → cue (in the active correction rules' words) → drills.
+  function injectCoachTips(session) {
+    const panel = $('#panel-learn');
+    $$('.coachtip', panel).forEach((n) => n.remove());
+    $$('.cp', panel).forEach((d) => d.classList.remove('cp-flag'));
+    if (!session) return;
+    const phi = Store.activePhilosophy();
+    const profile = Store.profile(session.profileId);
+    const band = profile ? profile.ageBand : '11-13';
+    const details = $$('.cp', panel);
+
+    CFG.CHECKPOINTS.forEach((cp, i) => {
+      const e = (session.evaluation || {})[cp];
+      if (!e || !e.assessed || e.pass || !details[i]) return;
+      details[i].classList.add('cp-flag');
+      const tips = (e.faultIds || []).map(Ev().tipById).filter(Boolean);
+      const box = el('div', 'coachtip');
+      box.innerHTML = '<b>Coach’s tip · from this round</b>' + (tips.length ? tips.map((tip) => {
+        const cue = Ev().renderCue(tip, phi, band);
+        const drills = Ev().drillsFor(tip, band);
+        return '<div class="ct-item"><span class="ct-fault">' + esc(tip.fault) + '</span>' +
+          '<p>' + esc(tip.tip) + '</p>' +
+          (cue && cue.text ? '<div class="ct-cue">“' + esc(cue.text) + '”</div>' : '') +
+          (drills.length ? '<span class="ct-drills">Drills: ' + esc(drills.map((d) => d.name).join(' · ')) + '</span>' : '');
+      }).join('') : '<p>This checkpoint slipped across the round — no single fault stood out. The basics below are the work.</p>');
+      const bodyEl = details[i].querySelector('.cp-body');
+      if (bodyEl) bodyEl.insertBefore(box, bodyEl.firstChild);
+      details[i].open = true;   // flagged sections arrive open — that's what he came for
+    });
+  }
+
+  function clearIndicators() {
+    const strip = $('#swingDots');
+    if (strip) strip.hidden = true;
+    setLearnBadge(0);
+    injectCoachTips(null);
+  }
+
   // ---------------- hooks from app.js ----------------
   window.DugoutFilmShell = {
     onSwingOpened(session, swingId) {
@@ -200,12 +301,14 @@
       setStarState();
       applyAI();
       closeAll(true);
+      renderIndicators(session, swingId);
     },
     onVideoMode() {
       current = null;
       setStarState();
       applyAI();
       closeAll(true);
+      clearIndicators();
     },
     closeAll,
     applyAI
