@@ -128,14 +128,17 @@
 
   // Connected components over the diff mask. Blobs bigger than a ball (i.e. the hitter) are
   // still fully traversed — they have to be, to mark them seen — but stop being tracked.
+  // The ball pass has its own pixel delta (BALL_PIXEL_DELTA): at the motion pass's 18, a
+  // sunlit backyard shimmers everywhere and the detector tracked noise, not the ball.
   const _stack = new Int32Array(CFG.BALL_W * CFG.BALL_H);
   function ballBlobs(cur, prev) {
     const W = CFG.BALL_W, H = CFG.BALL_H, N = W * H;
+    const DELTA = CFG.BALL_PIXEL_DELTA || CFG.MOTION_PIXEL_DELTA;
     const seen = new Uint8Array(N);
     const out = [];
     for (let p0 = 0; p0 < N; p0++) {
       if (seen[p0]) continue;
-      if (Math.abs(cur[p0] - prev[p0]) <= CFG.MOTION_PIXEL_DELTA) { seen[p0] = 1; continue; }
+      if (Math.abs(cur[p0] - prev[p0]) <= DELTA) { seen[p0] = 1; continue; }
       let sp = 0;
       _stack[sp++] = p0; seen[p0] = 1;
       let n = 0, sx = 0, sy = 0, x0 = 1e9, x1 = -1, y0 = 1e9, y1 = -1;
@@ -151,7 +154,7 @@
             if (nx < 0 || ny < 0 || nx >= W || ny >= H) continue;
             const r = ny * W + nx;
             if (seen[r]) continue;
-            if (Math.abs(cur[r] - prev[r]) <= CFG.MOTION_PIXEL_DELTA) { seen[r] = 1; continue; }
+            if (Math.abs(cur[r] - prev[r]) <= DELTA) { seen[r] = 1; continue; }
             seen[r] = 1;
             if (sp < _stack.length) _stack[sp++] = r;
           }
@@ -355,7 +358,21 @@
   function findSwings(samples, peaks, ballTracks) {
     if (samples.length < 4) return [];
     const raw = samples.map((s) => s.e);
-    const sm = medianSmooth(raw, CFG.MOTION_SMOOTH_WIN);
+    // Time-based smoothing window. rVFC at 4x playback drops frames — measured ~7.5
+    // samples/sec on an 30fps clip — so a fixed 5-SAMPLE median spanned ~0.7s and erased a
+    // real 0.2s swing entirely (DUG-34 field failure). Derive the window from the actual
+    // sample cadence so it always spans ~MOTION_SMOOTH_SEC of real time.
+    let win = CFG.MOTION_SMOOTH_WIN;
+    if (CFG.MOTION_SMOOTH_SEC && samples.length > 8) {
+      const dts = [];
+      for (let i = 1; i < samples.length; i++) dts.push(samples[i].t - samples[i - 1].t);
+      dts.sort((a, b) => a - b);
+      const mdt = dts[Math.floor(dts.length / 2)] || 0.033;
+      win = Math.round(CFG.MOTION_SMOOTH_SEC / mdt);
+      if (win % 2 === 0) win += 1;             // median wants an odd window
+      win = Math.max(3, Math.min(9, win));
+    }
+    const sm = medianSmooth(raw, win);
     const sorted = [...sm].sort((a, b) => a - b);
     // baseline = median of the quiet half; a round is mostly waiting, not swinging
     const baseline = sorted[Math.floor(sorted.length * 0.5)] || 0.001;
@@ -386,24 +403,53 @@
     }
 
     const tracks = ballTracks || [];
+    const audio = peaks || [];
     return merged
       .filter((s) => s.end - s.start >= CFG.MIN_SWING_SEC)
-      // THE GATE: a motion spike is only a swing if a ball arrived around it. Bringing the
-      // bat back to the shoulder moves plenty; no ball ever shows up for it.
+      // Camera handling is not a swing: walking into the lens to stop recording measured
+      // 20x baseline; real swings measure 3-8x (POSE-PROBE + Three Swings.mov). Anything
+      // this violent is the camera or the scene changing, not a bat.
+      .filter((s) => !CFG.MAX_SPIKE_MULT || s.peakE <= baseline * CFG.MAX_SPIKE_MULT)
+      // THE GATE, v2: a motion spike is a swing if a ball arrived around it OR a contact
+      // ping landed near its peak. Ball tracks alone proved un-gateable on real backyard
+      // footage (a moving bat tip IS a small fast straight blob), and a saturated detector
+      // used to switch the gate off silently. Audio now carries equal weight: practice
+      // waggles and bat resets have no ping and no arriving ball, so they drop. A clip with
+      // NEITHER signal anywhere (silent camera, no ball found) falls back to motion-only —
+      // an entire round is never zeroed out for lack of a confirmation channel.
       .filter((s) => {
-        if (!tracks.length) return true;   // no ball track anywhere: fall back to motion
-        return tracks.some((tr) => Math.abs(tr.endT - s.peakT) <= CFG.BALL_NEAR_SEC ||
+        if (!tracks.length && !audio.length) return true;
+        const ballNear = tracks.length && tracks.some((tr) => Math.abs(tr.endT - s.peakT) <= CFG.BALL_NEAR_SEC ||
           (s.start - CFG.BALL_NEAR_SEC <= tr.endT && tr.endT <= s.end + CFG.BALL_NEAR_SEC));
+        // Audio test mirrors the ball test: near the peak OR inside the span (lightly
+        // padded). At low sample rates the smoothed peak can land >1s before the actual
+        // ping (measured on pitch_01: smoothed peak 6.4s, contact ping 7.43s) — the span
+        // still covers it. Camera-handling spans were already removed above, so a footstep
+        // inside a walking span can't resurrect it.
+        const gateSec = CFG.GATE_AUDIO_SEC || CFG.AUDIO_CONFIRM_SEC;
+        const audioNear = audio.length && audio.some((p) => Math.abs(p - s.peakT) <= gateSec ||
+          (s.start - 0.4 <= p && p <= s.end + 0.5));
+        return ballNear || audioNear;
       })
       .map((s) => {
         // audio only sharpens contact; its absence never disqualifies a swing (whiffs count)
-        const near = peaks.filter((p) => Math.abs(p - s.peakT) <= CFG.AUDIO_CONFIRM_SEC);
+        const near = audio.filter((p) => Math.abs(p - s.peakT) <= CFG.AUDIO_CONFIRM_SEC);
         const contactT = near.length
           ? near.reduce((a, b) => (Math.abs(b - s.peakT) < Math.abs(a - s.peakT) ? b : a))
           : s.peakT;
+        // A long span means neighboring movement bled into the swing (walking away from the
+        // camera merged into swing 1 as one 7s window). Tighten around contact so the
+        // checkpoint phase map (contact-anchored fractions of the window) stays meaningful.
+        let start = s.start, end = s.end;
+        if (CFG.SWING_TIGHTEN_SEC && end - start > CFG.SWING_TIGHTEN_SEC) {
+          const pre = CFG.SWING_TIGHTEN_SEC * (CFG.CONTACT_ANCHOR || 0.62);
+          const post = CFG.SWING_TIGHTEN_SEC - pre;
+          start = Math.max(start, contactT - pre);
+          end = Math.min(end, contactT + post);
+        }
         return {
-          start: Math.max(0, s.start - CFG.PRE_PAD_SEC),
-          end: s.end + CFG.POST_PAD_SEC,
+          start: Math.max(0, start - CFG.PRE_PAD_SEC),
+          end: end + CFG.POST_PAD_SEC,
           contactT,
           audioConfirmed: near.length > 0,
           confidence: s.peakE / Math.max(baseline, 0.001)

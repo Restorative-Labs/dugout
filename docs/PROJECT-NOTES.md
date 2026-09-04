@@ -22,12 +22,14 @@
 | `vendor/` | TF.js + MoveNet, vendored (~5.6MB). No CDN, no build, works offline |
 | `scripts/` | `build_library.py` (xlsx → js), `build_index.py` (assembles index.html) |
 | `docs/POSE-PROBE.md` | Measured findings that drove the design — **read before tuning thresholds** |
-| `media/*` | Editable source assets (also at repo root, historically) |
+| `../Design & UX/media/*` | Editable source assets, OUTSIDE the repo (was `../media/*`
+before the Jul 28-29 workspace reorg; some copies also live at the repo root historically) |
 
 ## Regenerating
 
-The Tip Library is generated from `DugOut_Tip_Library_Seed_v0.2.xlsx` in the working
-folder. After the trainer revises the sheet:
+The Tip Library is generated from `DugOut_Tip_Library_Seed_v0.2.xlsx`, which lives in the
+workspace folder at `../Product & Specs/`. `build_library.py` resolves that path from its own
+location, so no editing is needed. After the trainer revises the sheet:
 
     python3 scripts/build_library.py
 

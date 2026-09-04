@@ -1,6 +1,7 @@
 # Pose & segmentation probe — measured findings
 
-Run July 16 2026 against the real footage in the working folder (`media/`), before
+Run July 16 2026 against the real footage in the workspace folder — then `media/`, now
+`Design & UX/media/` after the Jul 28-29 reorg (the repo itself did not move) — before
 building DUG-34. Everything below is measured in a browser, not estimated.
 Numbers matter because segmentation quality is the #1 technical risk.
 
@@ -8,9 +9,9 @@ Numbers matter because segmentation quality is the #1 technical risk.
 
 | Clip | Duration | Notes |
 |---|---|---|
-| `media/test-clips/pitch_01–06.mov` | ~23s each | one swing per clip → "session of one" material |
-| `media/IMG_0768.mov` | 170.1s | full round, over the 90s cap |
-| `media/IMG_0769.mov` | 115.1s | full round, over the 90s cap |
+| `Design & UX/media/test-clips/pitch_01–06.mov` | ~23s each | one swing per clip → "session of one" material |
+| `Design & UX/media/IMG_0768.mov` | 170.1s | full round, over the 90s cap |
+| `Design & UX/media/IMG_0769.mov` | 115.1s | full round, over the 90s cap |
 
 All are **1920×1080 HEVC (hvc1) + AAC**, shot in a backyard (not a cage), single
 subject in frame, camera side-on and far back.

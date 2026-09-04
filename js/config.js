@@ -46,7 +46,13 @@ window.DUGOUT_CONFIG = {
   // ---- segmentation ----
   MOTION_W: 192, MOTION_H: 108,   // downscale for frame differencing
   MOTION_PIXEL_DELTA: 18,         // per-pixel luma delta that counts as movement
-  MOTION_SMOOTH_WIN: 5,           // median-smooth window (frames) — raw signal is noisy
+  // Field tuning (DUG-34, Jul 26, "Three Swings.mov"): the smooth window is now TIME-based.
+  // The old fixed 5-frame window assumed ~30 samples/sec, but rVFC at 4x playback drops
+  // frames — measured ~7.5 samples/sec on real footage, turning "5 frames" into a ~0.7s
+  // median that erased a real 0.2s swing (swing 2 of 3 vanished). The window is derived
+  // from the measured sample cadence at runtime; MOTION_SMOOTH_WIN remains as the fallback.
+  MOTION_SMOOTH_SEC: 0.24,        // target smoothing span in seconds (odd frame count, 3..9)
+  MOTION_SMOOTH_WIN: 5,           // fallback median window (frames) if cadence unknown
   SPIKE_ENTER_MULT: 3.0,          // enter a swing above this * baseline
   SPIKE_EXIT_MULT: 1.6,           // ...and leave below this (hysteresis)
   // A youth swing is ~0.1-0.2s of blurred motion; bringing the bat back to the shoulder is
@@ -59,7 +65,13 @@ window.DUGOUT_CONFIG = {
   // travelling through frame means a pitch happened. No ball, no swing.
   BALL_W: 480, BALL_H: 270,       // higher res than motion: a ball is ~15px at 1080p, so at
                                   // the 192x108 motion grid it would be under 2px
-  BALL_MIN_AREA: 2,               // blob area (px at BALL_W x BALL_H)
+  // Field tuning (Jul 26): at delta 18 / area 2 a sunlit backyard (grass + bush shimmer,
+  // compression noise) produced >20 blobs in 98% of frames and 1,800+ "tracks" — the
+  // saturation guard tripped and the gate silently turned off. The ball is a high-contrast
+  // white blob; shimmer is low-amplitude. A higher, ball-specific pixel delta plus a real
+  // minimum area cuts noise ~8x while keeping the ball (measured sweep on real footage).
+  BALL_PIXEL_DELTA: 26,           // luma delta for the BALL pass only (motion pass keeps 18)
+  BALL_MIN_AREA: 4,               // blob area (px at BALL_W x BALL_H); 2 tracked pure noise
   BALL_MAX_AREA: 140,             // bigger than this is the hitter, not the ball
   BALL_MAX_ASPECT: 3.0,           // motion-blurred balls streak, but not endlessly
   BALL_MIN_TRACK: 3,              // frames a candidate must persist to be a real track
@@ -71,11 +83,33 @@ window.DUGOUT_CONFIG = {
   // quality: a ball flies straight and fast, noise jitters in place.
   BALL_MIN_STRAIGHT: 0.82,        // |net displacement| / path length; a ball is ~1.0
   BALL_MIN_SPEED: 120,            // px/sec at BALL_W x BALL_H — leaves drift, balls fly
-  BALL_MAX_TRACKS: 40,            // sanity: more than this means we're tracking noise
+  // Field tuning (Jul 26): cage footage (pitch_01) produced 43 REAL tracks — the arriving
+  // pitch plus the hit ball — and the old cap of 40 threw them all away. Genuine noise
+  // saturation measures 388-1,800+ tracks (sunlit backyard); 80 separates the two cleanly.
+  BALL_MAX_TRACKS: 80,            // sanity: more than this means we're tracking noise
   MIN_GAP_SEC: 0.9,               // merge spikes closer than this into one swing
   PRE_PAD_SEC: 1.0,               // ~1s pre/post padding per spec
   POST_PAD_SEC: 1.0,
-  AUDIO_CONFIRM_SEC: 0.35,        // audio transient this close to a motion peak = contact
+  // Field tuning (Jul 26): on real self-toss footage the motion-energy peak lands mid-swing,
+  // 0.5-0.7s BEFORE the contact ping — 0.35 missed every real contact. 0.75 snaps contact
+  // to the ping on all three ground-truth swings without grabbing unrelated noise.
+  AUDIO_CONFIRM_SEC: 0.75,        // audio transient this close to a motion peak = contact
+
+  // ---- gate v2 (DUG-34 field failure, Jul 26) ----
+  // The ball track alone cannot gate swings on real backyard footage: a moving bat tip and
+  // body fragments produce ball-like tracks, and a noisy scene saturates the detector so the
+  // gate turned itself off — practice waggles and walking to the camera then counted as
+  // swings, while a clip whose noise tracks missed the swing windows returned ZERO swings
+  // ("No swings found" on a clip with a real swing — the Single Single Error recording).
+  // A motion spike now counts as a swing if a ball track OR a contact-audio transient lands
+  // near it; a clip with neither signal anywhere falls back to motion-only (never zero out
+  // an entire round for lack of confirmation signal).
+  GATE_AUDIO_SEC: 1.0,            // audio ping within this of a motion peak confirms a swing
+  MAX_SPIKE_MULT: 12,             // spikes above this x baseline are camera handling, not
+                                  // swings (real swings measured 3-8x; walking into the
+                                  // lens to stop recording measured 20x)
+  SWING_TIGHTEN_SEC: 3.0,         // spans longer than this are tightened around contact
+                                  // before padding (walk-away bled a 7s window into swing 1)
   KEYFRAMES_PER_SWING: 24,        // raw is deleted, so frames must be extracted up front
   KEYFRAME_WIDTH: 540,
   KEYFRAME_QUALITY: 0.72,
