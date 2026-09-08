@@ -15,6 +15,52 @@ Next: <the one thing the next session should pick up>
 
 ---
 
+## 2026-09-08 — TestFlight prep: org team, export compliance, and the swing-gate fix
+Tickets: DUG-34, DUG-38
+Changed: `js/config.js` (SPIKE_ENTER_MULT 3.0 -> 2.4), `ios/DugOut.xcodeproj/project.pbxproj`
+(DEVELOPMENT_TEAM -> the LLC, build number 1 -> 2), `ios/DugOut/Info.plist`
+(ITSAppUsesNonExemptEncryption), `ios/README-IOS.md` (stale free-account notes).
+State: committed+pushed on `rescue/jul-field-tuning`. `main` still untouched.
+Next: in Xcode under the LLC account — register the bundle id on the org team, let Xcode
+issue the Apple Distribution cert, Archive and upload. Then confirm swing detection on the
+phone before this branch goes near `main`.
+
+**The segmentation blocker is fixed.** `SPIKE_ENTER_MULT` 3.0 -> 2.4. Both regression clips
+now return the right count, stable over four runs:
+
+| Clip | Expected | Found | Contacts | Ground truth |
+|---|---|---|---|---|
+| `Three Swings.mov` | 3 | **3** | 4.27 / 31.58 / 57.29s | ~4.3 / 31.6 / 57.3 |
+| `pitch_01.mov` | 2 | **2** | 7.43 / ~20.1s | 7.43 confirmed |
+
+Counts are stable. Contact timing is exact and repeatable on audio-confirmed swings
+(4.27 / 31.58 / 57.29 and 7.43 repeat to the hundredth); on swings with no ping it falls
+back to the motion peak and drifts run-to-run by up to ~0.8s. That is the designed
+behaviour, not a defect, but it is why the phase map wants the audio channel.
+
+The old `MAX_SPIKE_MULT` comment claiming real swings run "3-8x" was wrong — measured
+2.3-3.0x on both clips — and that wrong number is what set the enter gate above the real
+signal. Comment corrected in place so the next tuning pass does not repeat it.
+
+**Apple account — the project was signing under the wrong team.** Membership is
+**Restorative Labs LLC, Team `NKNR8F3VKC`, Organization, paid through Aug 19 2027**. The
+project had `DEVELOPMENT_TEAM = KX2L3Q37G7`, the free personal team (the local cert reads
+`OU=KX2L3Q37G7, O=Derell Jenkins`), which is why no Apple Distribution certificate existed
+and why signing kept expiring every 7 days. Repointed to `NKNR8F3VKC`.
+
+**Verified:** `xcodebuild ... archive` succeeds and passes `-validate-for-store`; the built
+bundle carries bundle id `com.restorativelabs.dugout`, version 1.0 build 2,
+`ITSAppUsesNonExemptEncryption=false`, the tuned `config.js`, and all web resources
+including the 7 self-hosted woff2 faces. 6.9MB.
+
+**Still open before an App Store submission (not blockers for TestFlight):**
+`TARGETED_DEVICE_FAMILY` is still `"1,2"` — the app ships to iPad with an iPhone-viewport
+layout; set to `"1"` if iPad is not intended. `js/ai.js` pins `MODEL = 'claude-sonnet-4-6'`,
+which does not look like a current model id and would fail for any tester who enters a key.
+A privacy policy URL is required for external TestFlight testers, and the app films minors.
+
+---
+
 ## 2026-09-04 — Landed the five weeks of July work in three commits
 Tickets: DUG-34, DUG-39, DUG-40, DUG-42
 Changed: three commits on `rescue/jul-field-tuning`, nothing merged to `main`.

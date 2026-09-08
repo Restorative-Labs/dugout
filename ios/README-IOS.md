@@ -19,24 +19,26 @@ as a native iPhone app. No Node, no CocoaPods, no build steps — open, sign, Ru
 ## First run
 
 1. Open `ios/DugOut.xcodeproj` in Xcode.
-2. Select the **DugOut** target → **Signing & Capabilities** → pick your Team.
-   (If the bundle id collides with something, change `com.restorativelabs.dugout`
-   to anything unique.)
+2. Select the **DugOut** target → **Signing & Capabilities**. The Team must be
+   **Restorative Labs LLC (`NKNR8F3VKC`)** — the paid Organization account. It is
+   set in the project already; if Xcode shows a personal team instead, you are
+   signed into the wrong Apple ID.
 3. Plug in your iPhone (Developer Mode already on), pick it as the run
    destination, press **Run**.
-4. Free Apple ID only: on the phone, Settings → General → VPN & Device
-   Management → trust your developer certificate the first time.
+4. First install on a phone: Settings → General → VPN & Device Management →
+   trust the developer certificate.
 5. First camera use shows the one-time iOS Camera/Microphone permission
    prompts — accept both.
 
 ## Demo notes
 
-- Fully offline once installed (Google Fonts fall back to system fonts with no
-  Wi-Fi; everything else is bundled). AI analysis calls `api.anthropic.com`
-  and degrades to the deterministic stub offline, as designed.
-- **Free Apple ID signing expires after 7 days** — re-Run from Xcode the day
-  before a demo. A paid developer account ($99/yr) extends this to a year and
-  unlocks TestFlight.
+- Fully offline once installed — the Oswald/Inter woff2 faces are self-hosted in
+  `css/fonts/`, so there is no network reference of any kind. AI analysis calls
+  `api.anthropic.com` and degrades to the deterministic stub offline, as designed;
+  with no key entered (You → App) the AI features stay hidden rather than broken.
+- Signing lasts a year on the Organization account, so the old 7-day re-Run dance
+  before a demo is gone. (It applied to the free personal team the project used
+  until Sep 8 2026.)
 - Data (profiles, rounds, clips) lives in the app's own WKWebView storage —
   separate from Safari's, and it survives rebuilds/reinstalls of the same app.
 

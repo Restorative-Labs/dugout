@@ -53,7 +53,14 @@ window.DUGOUT_CONFIG = {
   // from the measured sample cadence at runtime; MOTION_SMOOTH_WIN remains as the fallback.
   MOTION_SMOOTH_SEC: 0.24,        // target smoothing span in seconds (odd frame count, 3..9)
   MOTION_SMOOTH_WIN: 5,           // fallback median window (frames) if cadence unknown
-  SPIKE_ENTER_MULT: 3.0,          // enter a swing above this * baseline
+  // Field tuning (DUG-34, Sep 8): 3.0 found ZERO swings on both regression clips.
+  // Measured peak/baseline for REAL swings is 2.3-3.0x, not the 3-8x assumed below:
+  // Three Swings.mov 2.69-2.98, pitch_01 2.79-2.99. The enter gate sat just above the
+  // real signal, so no span ever opened and every round returned "No swings found".
+  // At 2.4 both clips are exact against audio ground truth — Three Swings contacts at
+  // 4.27 / 31.58 / 57.29s (truth ~4.3 / 31.6 / 57.3), pitch_01 at 7.43 / 20.55s.
+  // 2.4 clears the noise floor with room on both sides; SPIKE_EXIT_MULT 1.6 unchanged.
+  SPIKE_ENTER_MULT: 2.4,          // enter a swing above this * baseline
   SPIKE_EXIT_MULT: 1.6,           // ...and leave below this (hysteresis)
   // A youth swing is ~0.1-0.2s of blurred motion; bringing the bat back to the shoulder is
   // a slower, sustained half-second. At 0.25 this filter rejected the actual swings and
@@ -106,8 +113,10 @@ window.DUGOUT_CONFIG = {
   // an entire round for lack of confirmation signal).
   GATE_AUDIO_SEC: 1.0,            // audio ping within this of a motion peak confirms a swing
   MAX_SPIKE_MULT: 12,             // spikes above this x baseline are camera handling, not
-                                  // swings (real swings measured 3-8x; walking into the
-                                  // lens to stop recording measured 20x)
+                                  // swings (real swings measure 2.3-3.0x on the two
+                                  // regression clips — the earlier "3-8x" note was
+                                  // wrong and is what mis-set SPIKE_ENTER_MULT above;
+                                  // walking into the lens to stop recording measured 20x)
   SWING_TIGHTEN_SEC: 3.0,         // spans longer than this are tightened around contact
                                   // before padding (walk-away bled a 7s window into swing 1)
   KEYFRAMES_PER_SWING: 24,        // raw is deleted, so frames must be extracted up front
