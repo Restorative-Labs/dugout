@@ -1,0 +1,40 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "permissions": {
+    "defaultMode": "acceptEdits",
+    "allow": [
+      "Bash(git status:*)",
+      "Bash(git diff:*)",
+      "Bash(git log:*)",
+      "Bash(git show:*)",
+      "Bash(git add:*)",
+      "Bash(git fetch:*)",
+      "Bash(git branch:*)",
+      "Bash(git push)",
+      "Bash(gh run:*)",
+      "Bash(gh pr view:*)",
+      "Bash(gh pr list:*)",
+      "Bash(python3 scripts/*)",
+      "Bash(ffmpeg:*)",
+      "Bash(ffprobe:*)"
+    ],
+    "deny": [
+      "Bash(git push --force:*)",
+      "Bash(git push -f:*)",
+      "Bash(git push --force-with-lease:*)",
+      "Bash(git reset --hard:*)",
+      "Bash(git clean:*)",
+      "Bash(git worktree prune:*)",
+      "Bash(gh pr merge:*)",
+      "Bash(rm -rf:*)",
+      "Read(.env)",
+      "Read(.env.local)",
+      "Edit(.env)",
+      "Write(.env)",
+      "Read(**/*.p8)",
+      "Write(**/*.p8)",
+      "Edit(js/library.js)",
+      "Write(js/library.js)"
+    ]
+  }
+}

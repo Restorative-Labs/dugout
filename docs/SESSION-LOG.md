@@ -111,6 +111,80 @@ side (highest real swing 2.98x, so 3.0 misses by a hair).
 
 ---
 
+## 2026-09-12 — Store listing name settled: Dugout: Next Rep
+Tickets: the App Store submission chain
+Changed: `docs/CANON.md` — R-36 ruled, R-35 superseded, R-32 already superseded.
+State: uncommitted along with the CPO work from 09-04 and 09-08.
+Next: register `com.restorativelabs.dugout-ios`, create the App Store Connect record as
+**Dugout: Next Rep** / subtitle **Hitting: one fix every round**. Fallbacks in order if Apple
+rejects: `Dugout: Swing Check`, `Dugout: Cage Work`.
+
+**Three rulings to land one name.** R-32 (Film Room) collided with GameChanger's own feature.
+R-35 (Dugout Hitting) was safe and said nothing. R-36 came from Derell's framing — *the app is
+designed on feedback loops* — which is a better articulation of the product than anything the
+CPO had offered. "Next Rep" is the loop as an action, it is what a coach says out loud, and it
+is forward-looking rather than diagnostic, which aligns the name with R-02 (never show a score).
+
+**Process fix applied:** clearance ran *before* the ruling this time — market leaders first,
+then exact-string, then adjacent categories. Accepted caveat recorded rather than buried:
+"NextRep" is crowded in fitness (4 iOS apps), which is a different risk class from a category
+king owning the phrase.
+
+---
+
+## 2026-09-08 — App Store launch handoff absorbed; bundle ID unblocked
+Tickets: DUG-51 (Apple agreements) and the App Store submission chain
+Changed: `docs/CANON.md` — R-31 through R-34 plus a competitive correction.
+State: uncommitted along with the 2026-09-04 CPO work.
+Next: register `com.restorativelabs.dugout-ios`, create the App Store Connect record, then
+re-sequence the Jira dates.
+
+**The unblock:** the incoming handoff treated Apple support case 102956802933 — asking Apple to
+release `com.restorativelabs.dugout` from the personal team `KX2L3Q37G7` — as the gate on
+everything. It is not. A bundle ID is invisible to users, nothing is on TestFlight, and no
+config is keyed to it, so the migration cost is zero while the case has no SLA. **Register a
+new ID today** (R-31); keep the case open as cleanup.
+
+**Competitive correction:** "Dugout App" was described as a real functional competitor shipping
+AI swing analysis. Verified — it is a TeamSnap/GameChanger competitor whose subtitle is "Team
+Management for Everyone," where AI video analysis is one bullet between Digital Trading Cards
+and Walkup Songs, with too few ratings to display an overview. Name collision, feature overlap,
+not a competitor. The real dedicated field is WIN Reality, V1 Baseball, b4-app and Baseball AI
+— none of which was in `competitive-landscape.md`.
+
+**Name finding:** the "Dugout" namespace holds at least seven live apps (Dugout App, Dugout
+Genius, Dugout Analytics, DugoutIQ, Prospect Dugout, Dugout 360, Dugout Dude). "Dugout" is a
+commodity noun in this category. Ruled **Dugout: Film Room** as the listing title (R-32), with
+the home-screen name staying **DugOut** (R-33).
+
+---
+
+## 2026-09-04 (later) — CPO role established; five business decisions ruled
+Tickets: DUG-13, DUG-25, DUG-36, DUG-66, DUG-70 (all previously parked in Needs Business Decision)
+Changed: `docs/CANON.md` created — the ruling ledger, 30 entries. `.claude/rules/`
+(checkpoints, visibility, privacy, segmentation — auto-load by path), `.claude/skills/`
+(premise, ticket, handoff), `.claude/settings.json` (permission gates). CPO charter added to
+`CLAUDE.md`. Mirrored to the Claude project as `canon.md`, `repo-claude-md.md`, and a rewritten
+`current-status.md`.
+State: **uncommitted** — 8 new files under `.claude/`, plus `docs/CANON.md`, plus edits to
+`CLAUDE.md` and this file. Nothing committed by this session.
+Next: commit the above; then Derell reviews R-26 through R-30 and overrides anything he
+disagrees with; then re-sequence the Jira dates, which depend on those rulings.
+
+**Ruled (full reasoning in CANON):**
+- R-26 pricing — $99/yr or $14.99/mo, one tier, no free tier. Ruled but **not publishable**
+  until StoreKit enforces it; the `$99/yr` in the mockup stays internal-only.
+- R-27 backend — none before November; then one Next.js app, one Postgres, no Clerk.
+- R-28 storage — sync OFF by default; R2-vs-S3 deferred to November on purpose.
+- R-29 philosophy — four verbs only: pick, order, ban, rename.
+- R-30 COPPA — drop the self-serve 13–17 tier; pose keypoints are biometric.
+
+**The system's first catch:** the screen-flow mockup renders `Player · $99/yr` and a renewal
+date while DUG-25 had ruled nothing. Logged as R-16. Under the publishable test that number
+was never eligible to leave the building, and would not have been caught by review.
+
+---
+
 ## 2026-09-04 — Workspace repair: paths, docs, and five weeks of unlanded work
 Tickets: —
 Changed: `CLAUDE.md` rewritten (correct absolute paths, doc map, surface-split rule,
