@@ -111,6 +111,36 @@ side (highest real swing 2.98x, so 3.0 misses by a hair).
 
 ---
 
+## 2026-09-13 — Apple identity created; the bundle-ID blocker is gone
+Tickets: DUG-51 next; DUG-123 confirmed by Apple at registration
+Changed: `docs/CANON.md` — R-36 promoted to RULED AND ENFORCED, Apple state table added,
+R-38 recorded.
+State: uncommitted along with all CPO work since 09-04.
+Next: **DUG-51** — Paid Apps agreement, tax, banking, Small Business Program. Now the sole
+remaining gate on October revenue. Also decide EU availability (R-38) before the availability
+step.
+
+**Registered** `com.restorativelabs.dugout-ios` under `NKNR8F3VKC` with Sign In with Apple as
+the only capability, then created the App Store Connect record as **Dugout: Next Rep**
+(iOS, en-US, SKU `DUGOUT-IOS-001`). Apple accepted the name at save, which is first-party
+confirmation the title is free — R-36 is now enforced, not merely ruled.
+
+**R-31 vindicated.** The whole chain took under twenty minutes and never needed support case
+102956802933, which Apple had escalated to senior support with no ETA. Treating an invisible
+string as a gate would have cost weeks of the October window.
+
+**Two findings surfaced during the work:**
+- **R-38** — EU Digital Services Act trader status is a *submission gate* for new apps, absent
+  from every existing doc. Recommend excluding the EU at v1.
+- Apple's own registration screen flagged that Sign in with Apple needs Private Email Relay
+  domain and email-source registration to function — independent confirmation of DUG-123.
+
+**Automation note:** App Store Connect's New App dialog resists automation — its Primary
+Language and Bundle ID selects ignore both programmatic values and keyboard selection. Text
+fields and checkboxes are fine. Expect to hand those two fields to Derell on any future run.
+
+---
+
 ## 2026-09-12 — Store listing name settled: Dugout: Next Rep
 Tickets: the App Store submission chain
 Changed: `docs/CANON.md` — R-36 ruled, R-35 superseded, R-32 already superseded.

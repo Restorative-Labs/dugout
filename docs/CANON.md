@@ -45,7 +45,7 @@ System TDD, the Segmentation TDD, the COPPA memo, the MVP definition, and the co
 
 | # | Item | Status | Why it matters |
 |---|---|---|---|
-| R-14 | `SPIKE_ENTER_MULT: 3.0`. The comment beside `MAX_SPIKE_MULT` asserts *"real swings measured 3-8x"*; the 2026-09-04 regression measured a maximum real swing of **2.98×** on both ground-truth clips, and both returned **zero swings**. Prose and config disagree. | **CONTRADICTED** | This is the canonical example of why this file exists. A threshold with zero headroom is a defect whichever side today's footage lands on. **The proposed 2.4 is proxy-measured** (headless requires a VP9 remux; motion energy *is* inter-frame delta, so the codec moves the number) and is not ruled. Needs device measurement on original H.264 across all five `pitch_0*.mov` clips. |
+| R-14 | ~~`SPIKE_ENTER_MULT: 3.0`~~ → **2.4 as of `3b7fae6` (2026-09-08).** Diagnosis resolved and shipped; the wrong "3-8x" comment is corrected in the file. **The value itself is still proxy-measured** — the four stable runs cited in the commit are headless, and headless requires a VP9 remux while motion energy *is* inter-frame delta. **Status: diagnosis RESOLVED, value PROVISIONAL** pending a device run on original H.264 across all five `pitch_0*.mov`. Original entry follows. `SPIKE_ENTER_MULT: 3.0`. The comment beside `MAX_SPIKE_MULT` asserts *"real swings measured 3-8x"*; the 2026-09-04 regression measured a maximum real swing of **2.98×** on both ground-truth clips, and both returned **zero swings**. Prose and config disagree. | **CONTRADICTED** | This is the canonical example of why this file exists. A threshold with zero headroom is a defect whichever side today's footage lands on. **The proposed 2.4 is proxy-measured** (headless requires a VP9 remux; motion energy *is* inter-frame delta, so the codec moves the number) and is not ruled. Needs device measurement on original H.264 across all five `pitch_0*.mov` clips. |
 | R-15 | `CONTACT_ANCHOR: 0.62` is the designed contact position within the swing window. `segment.js` does not honour it — measured 0.500 / 0.761 / 0.572 depending on audio confirmation. | **CONTRADICTED** (DUG-54) | The error flips direction depending on whether audio confirmed the swing, so a whiff and a solid contact in one session are oppositely mis-registered. Silent — six plausible marks still render. |
 | R-16 | Launch pricing. The screen-flow mockup renders **"Player · $99/yr"** and a renewal date. **Nothing has ruled this.** | **PENDING** (DUG-25) | Under the publishable test this number is `RULED=false` → not publishable. It must not appear in the App Store listing, a deck, or anything a parent sees until DUG-25 is ruled. The mockup is internal only. |
 | R-17 | Backend stack. | **PENDING** (DUG-66) | Input to the release ladder, not independent of it. |
@@ -53,6 +53,8 @@ System TDD, the Segmentation TDD, the COPPA memo, the MVP definition, and the co
 | R-19 | Coach roles and philosophy scope. | **PENDING** (DUG-36) | R-05 bounds it; the open question is how far selection extends. |
 | R-20 | COPPA compliance checklist. | **PENDING** (DUG-13) | The 2025 amendments compliance date (2026-04-22) has **passed**. "Gait patterns" is now a biometric identifier — directly relevant to pose keypoints. |
 | R-37 | **The checkpoint taxonomy is hardcoded, and pitching needs a different one.** R-01 makes Stance / Load / Stride / Hips Fire / Contact / Finish the spine of the rubric, the tip-library index **and** the philosophy structure simultaneously — three systems keyed to six hitting-specific names. | **OPEN — surfaced 2026-09-12** | "Add pitching" is therefore not a feature but a schema change across three systems, and probably not six checkpoints. The 16 Jul brief anticipated "same chassis, new taxonomy," but nothing in the design makes the taxonomy a parameter rather than a constant. **Cheapest to address now**, while the tip library is seed v0.2, rather than after a trainer has vetted a corpus keyed to hitting. Does not block the October launch; does bound how the tip library should be structured before DUG-37 review. |
+| R-38 | **EU Digital Services Act trader status is a submission gate.** App Store Connect banner, seen 2026-09-13: *"Developers must provide their trader status to submit new apps for distribution in the European Union… your apps will be removed from the App Store in the EU."* | **OPEN — surfaced 2026-09-13** | Not in the COPPA memo, the System TDD or the release ladder. Two paths: declare trader status (requires a verified business address and contact details published on the listing), or **exclude the EU from availability at launch** — which costs nothing in 2026 since the GTM is US youth baseball. Recommend excluding the EU for v1 and revisiting only if there is real EU demand. Decide before the App Store Connect availability step, not at submission. |
+| R-39 | **The spec contradicts itself on what a coach can see — and it is the most legally load-bearing grant in the product.** W1.5's approval copy says the coach sees *"pass/fail marks, the priority focus, and the swing reel."* W3.4 says his view is *"exactly what the parent sees. No raw footage."* The visibility matrix says **Swing clips — Coach: NO.** And the consent screen promises the parent *"a coach you approve sees pass/fail marks — never your video."* | **OPEN — owner Derell, surfaced 2026-09-14** | "Swing reel" is overloaded: on the Round Card it is a grid of **clips you tap to scrub**. The design canvas draws the **stricter** reading — per-swing marks, no clips — because that is the only reading consistent with R-03, R-04 and the consent copy. A ruling is needed either way, and the looser reading would require **rewriting the consent screen**, not just the coach-approval screen. Found by review of the design canvas, 2026-09-14. |
 | R-21 | `AUDIO_CONFIRM_SEC: 0.75`. Two measurements in `config.js` disagree on the peak→ping offset: 0.5–0.7s (backyard) vs 1.03s (`pitch_01`). Neither checked against more than one clip. | **PROVISIONAL** | If 1.03s is representative of cage footage, the window excludes the real ping and every swing is treated as a whiff. |
 
 ---
@@ -274,7 +276,7 @@ it hard-rejects a taken name at save, so this resolves in seconds at record crea
 
 ---
 
-## R-36 · Store listing title — RULED: **Dugout: Next Rep** · 2026-09-12
+## R-36 · Store listing title — **RULED AND ENFORCED** 2026-09-13: **Dugout: Next Rep**
 
 **Supersedes R-35 (`Dugout Hitting`), which superseded R-32 (`Dugout: Film Room`).**
 
@@ -312,9 +314,14 @@ hitting coaches."*
   The `Dugout:` prefix sets the baseball frame before the reader reaches the second word.
   **This is a different risk class from R-32** — small apps in an adjacent category, not the
   category king owning the exact phrase.
-- *Confidence:* search-engine, not first-party. **App Store Connect is the arbiter** and rejects
-  a taken name at save. If it rejects, the fallback order is `Dugout: Swing Check`, then
-  `Dugout: Cage Work`.
+- - **First-party confirmed 2026-09-13.** App Store Connect **accepted the name at record
+  creation** — it hard-rejects a taken name at save, so `Dugout: Next Rep` is now held by
+  Restorative Labs LLC. The record shows *iOS 1.0 Prepare for Submission*. Fallbacks
+  (`Dugout: Swing Check`, `Dugout: Cage Work`) are no longer needed.
+
+**This ruling is now `RULED && enforced` — publishable.** R-16's block on customer-facing
+naming is lifted for the title. Pricing (R-26) remains **not** publishable until StoreKit
+charges it.
 
 ### Rejected in this round, with reasons worth keeping
 
@@ -360,6 +367,15 @@ commodity word the title was chosen to avoid.
 2. **The first release shipping any pitching analysis.** Drop "Hitting." Do **not** add
    "pitching" to the subtitle or keyword field before the feature is live — Apple rejects
    metadata for features that are not present.
+
+### Apple state as of 2026-09-13
+
+| Item | Status |
+|---|---|
+| App ID | **Registered** — `com.restorativelabs.dugout-ios`, description `DugOut`, team `NKNR8F3VKC`, Explicit, **Sign In with Apple enabled** (only capability) |
+| App Store Connect record | **Created** — `Dugout: Next Rep`, iOS, en-US, SKU `DUGOUT-IOS-001`, Full Access. Status *1.0 Prepare for Submission* |
+| Support case 102956802933 | Still open, now irrelevant to the critical path. Answer a senior advisor if one writes; the old identifier is worth recovering for free but blocks nothing |
+| Apple flagged at registration | Sign in with Apple needs Private Email Relay domain + email-source registration before it works — **DUG-123**, already on the board |
 
 ### Unaffected by this ruling
 

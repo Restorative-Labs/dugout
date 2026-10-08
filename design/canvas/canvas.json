@@ -1,0 +1,317 @@
+{
+  "artboards": [
+    {
+      "file": "Splash.dc.html",
+      "x": 0,
+      "y": 0,
+      "w": 390,
+      "h": 844,
+      "title": "P-SPLASH \u00b7 Brand moment",
+      "page": "page-1"
+    },
+    {
+      "file": "Welcome.dc.html",
+      "x": 480,
+      "y": 0,
+      "w": 390,
+      "h": 844,
+      "title": "P-WELCOME \u00b7 First run",
+      "page": "page-1"
+    },
+    {
+      "file": "Account.dc.html",
+      "x": 960,
+      "y": 0,
+      "w": 390,
+      "h": 844,
+      "title": "P-ACCOUNT \u00b7 Create the parent account",
+      "page": "page-1"
+    },
+    {
+      "file": "Consent.dc.html",
+      "x": 1440,
+      "y": 0,
+      "w": 390,
+      "h": 844,
+      "title": "P-CONSENT \u00b7 Consent",
+      "page": "page-1"
+    },
+    {
+      "file": "ProfileNew.dc.html",
+      "x": 1920,
+      "y": 0,
+      "w": 390,
+      "h": 844,
+      "title": "P-PROFILE-NEW \u00b7 First athlete profile",
+      "page": "page-1"
+    },
+    {
+      "file": "PhilosophyPick.dc.html",
+      "x": 0,
+      "y": 994,
+      "w": 390,
+      "h": 844,
+      "title": "P-PHILOSOPHY-PICK \u00b7 Pick a coaching voice",
+      "page": "page-1"
+    },
+    {
+      "file": "RoundsEmpty.dc.html",
+      "x": 480,
+      "y": 994,
+      "w": 390,
+      "h": 844,
+      "title": "P-ROUNDS-EMPTY \u00b7 Rounds \u2014 empty state",
+      "page": "page-1"
+    },
+    {
+      "file": "RoundStart.dc.html",
+      "x": 960,
+      "y": 994,
+      "w": 390,
+      "h": 844,
+      "title": "P-ROUND-START \u00b7 Set up the round",
+      "page": "page-1"
+    },
+    {
+      "file": "Cage.dc.html",
+      "x": 1440,
+      "y": 994,
+      "w": 390,
+      "h": 844,
+      "title": "P-CAGE \u00b7 Recording",
+      "page": "page-1"
+    },
+    {
+      "file": "Segmenting.dc.html",
+      "x": 1920,
+      "y": 994,
+      "w": 390,
+      "h": 844,
+      "title": "P-SEGMENTING \u00b7 Finding your swings",
+      "page": "page-1"
+    },
+    {
+      "file": "Main.dc.html",
+      "x": 0,
+      "y": 1988,
+      "w": 390,
+      "h": 844,
+      "title": "P-ROUND \u00b7 The Round Card",
+      "page": "page-1"
+    },
+    {
+      "file": "Checkpoint.dc.html",
+      "x": 480,
+      "y": 1988,
+      "w": 390,
+      "h": 844,
+      "title": "P-CHECKPOINT \u00b7 Checkpoint drill-in",
+      "page": "page-1"
+    },
+    {
+      "file": "Reel.dc.html",
+      "x": 960,
+      "y": 1988,
+      "w": 390,
+      "h": 844,
+      "title": "P-REEL \u00b7 Film space",
+      "page": "page-1"
+    },
+    {
+      "file": "Celebrate.dc.html",
+      "x": 1440,
+      "y": 1988,
+      "w": 390,
+      "h": 844,
+      "title": "P-CELEBRATE \u00b7 All six pass",
+      "page": "page-1"
+    },
+    {
+      "file": "Progress.dc.html",
+      "x": 1920,
+      "y": 1988,
+      "w": 390,
+      "h": 844,
+      "title": "P-PROGRESS \u00b7 Progress",
+      "page": "page-1"
+    },
+    {
+      "file": "You.dc.html",
+      "x": 0,
+      "y": 2982,
+      "w": 390,
+      "h": 844,
+      "title": "P-YOU \u00b7 You",
+      "page": "page-1"
+    },
+    {
+      "file": "LinkCoach.dc.html",
+      "x": 480,
+      "y": 2982,
+      "w": 390,
+      "h": 844,
+      "title": "P-LINK-COACH \u00b7 Approve a coach",
+      "page": "page-1"
+    },
+    {
+      "file": "Billing.dc.html",
+      "x": 960,
+      "y": 2982,
+      "w": 390,
+      "h": 844,
+      "title": "P-BILLING \u00b7 Subscription",
+      "page": "page-1"
+    },
+    {
+      "file": "Delete.dc.html",
+      "x": 1440,
+      "y": 2982,
+      "w": 390,
+      "h": 844,
+      "title": "P-DELETE \u00b7 Delete account",
+      "page": "page-1"
+    },
+    {
+      "file": "PlayerFocus.dc.html",
+      "x": 0,
+      "y": 0,
+      "w": 390,
+      "h": 844,
+      "title": "A-FOCUS \u00b7 The one thing",
+      "page": "page-2"
+    },
+    {
+      "file": "PlayerReel.dc.html",
+      "x": 480,
+      "y": 0,
+      "w": 390,
+      "h": 844,
+      "title": "A-REEL \u00b7 My swings",
+      "page": "page-2"
+    },
+    {
+      "file": "PlayerStreaks.dc.html",
+      "x": 960,
+      "y": 0,
+      "w": 390,
+      "h": 844,
+      "title": "A-STREAKS \u00b7 Streaks",
+      "page": "page-2"
+    },
+    {
+      "file": "PlayerExcluded.dc.html",
+      "x": 1440,
+      "y": 0,
+      "w": 390,
+      "h": 844,
+      "title": "A-EXCLUDED \u00b7 What the player cannot reach",
+      "page": "page-2"
+    },
+    {
+      "file": "StateNoSwings.dc.html",
+      "x": 0,
+      "y": 0,
+      "w": 390,
+      "h": 844,
+      "title": "S-NO-SWINGS \u00b7 No swings found",
+      "page": "page-3"
+    },
+    {
+      "file": "StatePartial.dc.html",
+      "x": 480,
+      "y": 0,
+      "w": 390,
+      "h": 844,
+      "title": "S-PARTIAL \u00b7 Round interrupted",
+      "page": "page-3"
+    },
+    {
+      "file": "StateOffline.dc.html",
+      "x": 960,
+      "y": 0,
+      "w": 390,
+      "h": 844,
+      "title": "S-OFFLINE \u00b7 No signal",
+      "page": "page-3"
+    },
+    {
+      "file": "StateCadence.dc.html",
+      "x": 1440,
+      "y": 0,
+      "w": 390,
+      "h": 844,
+      "title": "S-CADENCE \u00b7 Enough for today",
+      "page": "page-3"
+    },
+    {
+      "file": "StateTrim.dc.html",
+      "x": 1920,
+      "y": 0,
+      "w": 390,
+      "h": 844,
+      "title": "S-TRIM \u00b7 Clip is long",
+      "page": "page-3"
+    },
+    {
+      "file": "StateFreeLimit.dc.html",
+      "x": 0,
+      "y": 994,
+      "w": 390,
+      "h": 844,
+      "title": "S-FREE-LIMIT \u00b7 Free round used",
+      "page": "page-3"
+    }
+  ],
+  "annotations": [
+    {
+      "id": "intro-page-1",
+      "page": "page-1",
+      "x": 0,
+      "y": -300,
+      "w": 900,
+      "text": "PARENT \u2014 U1, the profile owner. 19 screens, left to right in flow order: onboard once, record a round, read one thing, watch it move over weeks, then the exits Apple requires.\n\nThe athlete profile is PARENT-OWNED. A coach never creates or owns child data; he is granted a results-only view and the parent revokes it without asking anyone.\n\nEvery artboard carries its ruling in the source comment at the top of the file \u2014 what it is for, what was rejected, and where the code contradicts the drawing today."
+    },
+    {
+      "id": "intro-page-2",
+      "page": "page-2",
+      "x": 0,
+      "y": -300,
+      "w": 900,
+      "text": "PLAYER \u2014 U2. Deliberately smaller than the parent view: the one thing, his swings, his streaks.\n\nThe fourth artboard draws what he CANNOT reach. The absence is a permission ruling, and a ruling nobody can see is a ruling nobody reviews."
+    },
+    {
+      "id": "intro-page-3",
+      "page": "page-3",
+      "x": 0,
+      "y": -300,
+      "w": 900,
+      "text": "STATES & FAILURES \u2014 every one of these is a real path in W1.2, and a failure screen that was never designed gets improvised at 11pm by whoever hits the bug.\n\nS-OFFLINE is a FEATURE screen, not an error: the cage has no signal and the whole pipeline is local by design."
+    },
+    {
+      "id": "blocked-index",
+      "page": "page-1",
+      "x": 2400,
+      "y": -300,
+      "w": 460,
+      "text": "BLOCKED, AND ON WHOM\n\n\u00b7 P-BILLING \u2014 owner: Derell\n\u00b7 S-FREE-LIMIT \u2014 owner: Derell\n\nThese are drawn in their not-yet state and say on the face of the artboard what is missing. None renders a number the product cannot honestly compute."
+    }
+  ],
+  "pages": [
+    {
+      "id": "page-1",
+      "name": "Parent"
+    },
+    {
+      "id": "page-2",
+      "name": "Player"
+    },
+    {
+      "id": "page-3",
+      "name": "States & failures"
+    }
+  ],
+  "launch": {
+    "view": "canvas",
+    "page": "page-1"
+  }
+}
