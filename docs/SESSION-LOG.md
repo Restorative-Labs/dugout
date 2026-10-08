@@ -15,6 +15,41 @@ Next: <the one thing the next session should pick up>
 
 ---
 
+## 2026-10-08 — main fast-forwarded to the rescue branch; Pages unfrozen
+Tickets: DUG-34, DUG-38 (the swing-gate fix reaches Pages); R-37, R-38, R-39 committed
+Changed: `2ea48c4` on `rescue/jul-field-tuning` — `docs/CANON.md` (R-37 through R-39),
+`docs/SESSION-LOG.md`, and the untracked `design/canvas/` (the generator that rebuilds the
+screen canvas). `main` fast-forwarded `c259f05..2ea48c4` (`--ff-only`, ancestry verified
+first) — 6 commits, 39 files, +4394/−50. Branches `session-based-capture` and
+`rescue/jul-field-tuning` deleted, local and remote, each after verifying 0 commits outside
+`origin/main`. Repo now carries `main` only.
+State: committed+pushed (this entry lands as its own commit on `main`).
+Next: **the device confirm on original H.264** — `Three Swings.mov` (3) and `pitch_01.mov`
+(2) on the iPhone, against the build now on `main`. Derell's; not run this session.
+
+**What the merge fixed.** `main` had been frozen at `c259f05` since **25 July**, and that
+commit carries `SPIKE_ENTER_MULT: 3.0`. Real swings measure 2.3–3.0x baseline, so the demo
+Pages served for ten weeks — the one shown to trainers — found **zero swings**, and the July
+fallback against zero-swing rounds hid it. The merge is what puts `2.4` live. Deployed
+`js/config.js` fetched with `no-store` reads `SPIKE_ENTER_MULT: 2.4`.
+
+**Unproven, stated plainly.** The zero-swing finding and the 2.4 candidate were both measured
+headless on VP9 webm remuxes. Nobody has confirmed on device that the live build finds 3 and 2
+swings. Until that run, "the demo finds swings" is not a publishable claim — the device confirm
+is what would falsify it.
+
+**Pages verification** (live URL, 375×812, after build `2ea48c4` reported `built`):
+HTTP 200, 23 resources all 200, **zero console messages, zero failed requests, one origin**
+(`restorative-labs.github.io`). Fonts serve from `css/fonts/`, TF.js from `vendor/`. The MoveNet
+model is not fetched at boot, so this run did not exercise it.
+
+**Noted, not changed:** `design/canvas/screens.py` writes a Google Fonts `<link>` into the
+canvas HTML it generates. It is a design tool — not loaded by `index.html`, not bundled by
+Xcode — so invariant #2 holds for the app, but don't copy that pattern into `css/` or `js/`.
+Also: this log had drifted out of newest-first order (09-08 sits above 09-12/09-13). Left as is.
+
+---
+
 ## 2026-09-08 — TestFlight prep: org team, export compliance, and the swing-gate fix
 Tickets: DUG-34, DUG-38
 Changed: `js/config.js` (SPIKE_ENTER_MULT 3.0 -> 2.4), `ios/DugOut.xcodeproj/project.pbxproj`
