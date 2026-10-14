@@ -229,7 +229,9 @@
       strip = el('div', 'swingdots');
       strip.id = 'swingDots';
       strip.onclick = () => openPanel('panel-learn');
-      $('#view-film .fstage-wrap').appendChild(strip);
+      // its own row between the stage and the transport — never floated over the controls
+      const wrap = $('#view-film .fstage-wrap');
+      wrap.insertBefore(strip, wrap.querySelector('.ftransport'));
     }
     const ctx = swingContext(session, swingId);
     strip.innerHTML = CFG.CHECKPOINTS.map((cp) => {

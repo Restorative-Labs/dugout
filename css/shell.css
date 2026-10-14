@@ -300,11 +300,14 @@ body[data-role=player] #addProfile { display: none; }
 .filmroom[hidden] { display: none; }
 .fstage-wrap { position: relative; flex: 1; min-height: 0; display: flex; flex-direction: column; }
 
-.filmroom .swingbar {
-  position: absolute; top: 8px; left: 8px; right: 8px; z-index: 7; margin: 0;
-  background: rgba(9, 22, 15, .88);
-  -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px);
-}
+/* DUG-40: its own row above the stage (the space over the video), not floated on it */
+.filmroom .swingbar { flex: none; margin: 4px 8px; padding: 3px 8px; gap: 6px; }
+.filmroom .swingbar[hidden] { display: none; }
+.filmroom .swingbar .mini { min-height: 44px; white-space: nowrap; }
+.filmroom .swingbar .sb-arrow { min-width: 44px; }
+.filmroom .swingbar .sb-mid { gap: 4px; min-width: 0; }
+.filmroom .swingbar #sbLabel { min-width: 0; white-space: nowrap; }
+.filmroom .swingbar .sb-grade { min-width: 0; white-space: nowrap; }
 .filmroom .stage {
   flex: 1; min-height: 0;
   aspect-ratio: auto; max-height: none;
@@ -313,18 +316,21 @@ body[data-role=player] #addProfile { display: none; }
 }
 .filmroom .fmedia { position: relative; margin: auto; max-width: 100%; max-height: 100%; }
 .filmroom .stage video, .filmroom .stage #frameImg {
-  width: auto; height: auto; max-width: 100vw; max-height: 100%;
+  width: auto; height: auto; max-width: 100vw; max-height: var(--stage-h, 100%);
   display: block; margin: 0 auto;
 }
 .filmroom .fmedia:has(#vid[hidden]):has(#frameImg[hidden]) { display: none; }
 
 /* right icon rail — the "video overlay icons" access point */
+/* DUG-40: held inside the stage; on a short screen (SE 1st gen) it wraps into a second
+   column rather than running over the swing bar and the chip row */
 .frail {
-  position: absolute; right: 6px; top: 50%; transform: translateY(-50%);
-  z-index: 8; display: flex; flex-direction: column; gap: 8px;
+  position: absolute; right: 6px; top: 8px; bottom: 8px;
+  z-index: 8; display: flex; flex-flow: column wrap-reverse; justify-content: center;
+  align-content: flex-start; gap: 6px;
 }
 .fr-btn {
-  width: 52px; padding: 7px 0 5px; border-radius: 12px;
+  width: 52px; min-height: 44px; padding: 4px 0 3px; border-radius: 12px;
   background: rgba(9, 22, 15, .78);
   -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px);
   border: 1px solid rgba(42, 68, 51, .8);
@@ -339,16 +345,18 @@ body[data-role=player] #addProfile { display: none; }
 .fr-btn.star.set svg { fill: var(--lights); }
 .fr-btn[hidden] { display: none; }
 
-/* transport pinned under the stage, compact */
+/* transport pinned under the stage: scrub, then step/play, then speed — every row 44pt (DUG-40) */
 .filmroom .ftransport { flex: none; }
 .filmroom .ftransport .transport {
-  margin: 0; border-radius: 0; border-left: 0; border-right: 0; border-bottom: 0; padding: 8px 12px 6px;
+  margin: 0; border-radius: 0; border-left: 0; border-right: 0; border-bottom: 0; padding: 4px 10px 6px;
 }
 .filmroom .ftransport .hint { display: none; }
-.filmroom .ftransport .ctlrow { margin-top: 6px; }
-.filmroom .ftransport .ctl { padding: 9px 0; }
-.filmroom .ftransport .speedrow { margin-top: 6px; }
-.filmroom .ftransport .speed { padding: 6px 0; }
+.filmroom .ftransport .scrubrow { min-height: 44px; }
+.filmroom .ftransport input[type=range] { height: 44px; }
+.filmroom .ftransport .ctlrow { margin-top: 4px; }
+.filmroom .ftransport .ctl { padding: 0; min-height: 44px; }
+.filmroom .ftransport .speedrow { margin-top: 4px; }
+.filmroom .ftransport .speed { padding: 0; min-height: 44px; }
 .filmroom footer { display: none; }
 
 /* chalk drawer: compact, no backdrop — you draw with it open */
@@ -374,18 +382,22 @@ body[data-role=player] #addProfile { display: none; }
 #filmBackdrop[hidden] { display: none; }
 
 /* per-swing checkpoint indicators (DUG-42) — "areas that require the tip are noticeable" */
+/* DUG-40: its own row above the scrub bar, in flow — six equal cells, mark over label,
+   so all six fit on a 320pt screen without wrapping onto the transport */
 .swingdots {
-  position: absolute; left: 8px; bottom: 8px; z-index: 7;
-  display: flex; gap: 4px; flex-wrap: wrap; max-width: calc(100% - 76px);
+  flex: none; display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 4px;
+  min-height: 44px; padding: 4px 10px 0;
+  background: var(--card); border-top: 1px solid var(--line);
   cursor: pointer;
 }
 .swingdots[hidden] { display: none; }
 .swingdots .sd {
-  display: inline-flex; align-items: center; gap: 4px;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px;
+  min-width: 0; text-align: center; line-height: 1.1;
   background: rgba(9, 22, 15, .82); border: 1px solid rgba(42, 68, 51, .8);
-  border-radius: 999px; padding: 4px 8px 4px 6px;
+  border-radius: 8px; padding: 3px 2px;
   font-family: 'Oswald', sans-serif; font-size: 9px; font-weight: 600;
-  letter-spacing: .07em; text-transform: uppercase; color: var(--chalk-dim);
+  letter-spacing: .04em; text-transform: uppercase; color: var(--chalk-dim);
 }
 .swingdots .sd i { font-style: normal; font-size: 11px; }
 .swingdots .sd.pass i { color: #3ddc84; }

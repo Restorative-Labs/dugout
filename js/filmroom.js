@@ -84,6 +84,7 @@
 
   // ---------- canvas sizing ----------
   function sizeCanvas(){
+    setStageH();   // cap the frame to the stage BEFORE measuring it
     const r = displayEl().getBoundingClientRect();
     // A canvas is a replaced element, so `inset:0` will NOT stretch it — these explicit
     // sizes are the only thing aligning the chalk overlay with the frame. Measuring while
@@ -103,6 +104,14 @@
   }
   new ResizeObserver(sizeCanvas).observe(vid);
   new ResizeObserver(sizeCanvas).observe(frameImg);
+  // DUG-40: the frame must fit the stage, not overflow it. A percentage max-height can't do
+  // it (the media box shrink-wraps the frame, so 100% of it is circular) and container units
+  // need iOS 16, so publish the stage height for the CSS to cap against. Set from sizeCanvas
+  // too, because ResizeObserver stops firing in an occluded renderer (see above).
+  function setStageH(){
+    if(stage.clientHeight) stage.style.setProperty('--stage-h', stage.clientHeight + 'px');
+  }
+  new ResizeObserver(sizeCanvas).observe(stage);
 
   // ---------- transport ----------
   function fmt(t){ return t.toFixed(2) + 's'; }
