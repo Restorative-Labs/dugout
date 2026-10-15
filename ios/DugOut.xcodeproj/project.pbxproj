@@ -17,6 +17,7 @@
 		D06000000000000000000109 /* vendor in Resources */ = {isa = PBXBuildFile; fileRef = D06000000000000000000009 /* vendor */; };
 		D0600000000000000000010A /* shadow-sprite.jpg in Resources */ = {isa = PBXBuildFile; fileRef = D0600000000000000000000A /* shadow-sprite.jpg */; };
 		D0600000000000000000010B /* swing-shadow.mp4 in Resources */ = {isa = PBXBuildFile; fileRef = D0600000000000000000000B /* swing-shadow.mp4 */; };
+		D0600000000000000000010C /* DugOutCore in Frameworks */ = {isa = PBXBuildFile; productRef = D06000000000000000000601 /* DugOutCore */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -32,6 +33,7 @@
 		D0600000000000000000000A /* shadow-sprite.jpg */ = {isa = PBXFileReference; lastKnownFileType = image.jpeg; path = "shadow-sprite.jpg"; sourceTree = "<group>"; };
 		D0600000000000000000000B /* swing-shadow.mp4 */ = {isa = PBXFileReference; lastKnownFileType = file; path = "swing-shadow.mp4"; sourceTree = "<group>"; };
 		D0600000000000000000000C /* DugOut.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = DugOut.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		D0600000000000000000000D /* DugOutCore */ = {isa = PBXFileReference; lastKnownFileType = wrapper; path = DugOutCore; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -39,6 +41,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				D0600000000000000000010C /* DugOutCore in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -49,6 +52,7 @@
 			isa = PBXGroup;
 			children = (
 				D06000000000000000000202 /* DugOut */,
+				D0600000000000000000000D /* DugOutCore */,
 				D06000000000000000000203 /* Web App */,
 				D06000000000000000000204 /* Products */,
 			);
@@ -105,6 +109,9 @@
 			);
 			name = DugOut;
 			productName = DugOut;
+			packageProductDependencies = (
+				D06000000000000000000601 /* DugOutCore */,
+			);
 			productReference = D0600000000000000000000C /* DugOut.app */;
 			productType = "com.apple.product-type.application";
 		};
@@ -287,6 +294,13 @@
 			defaultConfigurationName = Debug;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		D06000000000000000000601 /* DugOutCore */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = DugOutCore;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = D06000000000000000000402 /* Project object */;
 }
