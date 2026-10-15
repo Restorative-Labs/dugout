@@ -11,12 +11,15 @@ struct SwingDetailView: View {
     let videoURL: URL
     let info: VideoTrackInfo
 
+    @Environment(\.scenePhase) private var scenePhase
     @State private var player: AVPlayer?
     @State private var overlay: [OverlayFrame] = []
     @State private var now: Double = 0
     @State private var loadingPose = true
     @State private var rate: Float = 0.25
     @State private var observers: [Any] = []
+    @State private var endObserver: NSObjectProtocol?
+    @State private var overlayTask: Task<[OverlayFrame], Error>?
 
     /// The picture as displayed (upright), for fitting the overlay to the video.
     private var uprightAspect: CGFloat {
@@ -45,7 +48,10 @@ struct SwingDetailView: View {
                     Text("¼×").tag(Float(0.25)); Text("½×").tag(Float(0.5)); Text("1×").tag(Float(1))
                 }
                 .pickerStyle(.segmented)
-                .onChange(of: rate) { _, r in if player?.timeControlStatus == .playing { player?.rate = r } }
+                .onChange(of: rate) { _, r in
+                    player?.defaultRate = r                          // the play button resumes at this speed
+                    if player?.timeControlStatus == .playing { player?.rate = r }
+                }
 
                 if swing.analysis.ok {
                     MarksRow(marks: swing.marks)
@@ -61,17 +67,29 @@ struct SwingDetailView: View {
         .navigationBarTitleDisplayMode(.inline)
         .task { await start() }
         .onDisappear { stop() }
+        .onChange(of: scenePhase) { _, phase in if phase != .active { player?.pause() } }
     }
 
     private func start() async {
         let p = AVPlayer(url: videoURL)
+        p.allowsExternalPlayback = false                       // no AirPlay: the video never leaves the phone (R-30)
+        p.usesExternalPlaybackWhileExternalScreenIsActive = false
+        p.defaultRate = rate
         let startTime = CMTime(seconds: swing.span.start, preferredTimescale: 600)
         await p.seek(to: startTime, toleranceBefore: .zero, toleranceAfter: .zero)
-        // loop the swing window
-        let end = NSValue(time: CMTime(seconds: swing.span.end, preferredTimescale: 600))
-        let loop = p.addBoundaryTimeObserver(forTimes: [end], queue: .main) {
-            p.seek(to: startTime, toleranceBefore: .zero, toleranceAfter: .zero) { _ in p.rate = rate }
+        // left before the player was ready: never start it (it would loop on, unseen and audible)
+        guard !Task.isCancelled else { p.pause(); return }
+
+        // loop the swing window. The window can run past the clip's end (end padding is not
+        // clamped to the duration), so loop on whichever comes first: the window's end or the clip's.
+        let loopEnd = min(swing.span.end, info.duration - 0.05)
+        let restart: @Sendable () -> Void = { [weak p] in
+            p?.seek(to: startTime, toleranceBefore: .zero, toleranceAfter: .zero) { _ in p?.rate = p?.defaultRate ?? 0.25 }
         }
+        let loop = p.addBoundaryTimeObserver(forTimes: [NSValue(time: CMTime(seconds: loopEnd, preferredTimescale: 600))],
+                                             queue: .main, using: restart)
+        endObserver = NotificationCenter.default.addObserver(forName: .AVPlayerItemDidPlayToEndTime, object: p.currentItem,
+                                                             queue: .main) { _ in restart() }
         let tick = p.addPeriodicTimeObserver(forInterval: CMTime(value: 1, timescale: 60), queue: .main) { t in
             now = t.seconds
         }
@@ -80,15 +98,20 @@ struct SwingDetailView: View {
         p.rate = rate
 
         let url = videoURL, s = swing.span.start, e = swing.span.end
-        let frames = (try? await Task.detached(priority: .userInitiated) {
-            try await PoseOverlay.frames(url, from: s, to: e)
-        }.value) ?? []
+        let task = Task.detached(priority: .userInitiated) { try await PoseOverlay.frames(url, from: s, to: e) }
+        overlayTask = task
+        let frames = (try? await task.value) ?? []
+        guard !Task.isCancelled else { return }
         overlay = frames
         loadingPose = false
     }
 
     private func stop() {
+        overlayTask?.cancel()
+        overlayTask = nil
         if let player { observers.forEach { player.removeTimeObserver($0) }; player.pause() }
+        if let endObserver { NotificationCenter.default.removeObserver(endObserver) }
+        endObserver = nil
         observers = []
         player = nil
     }

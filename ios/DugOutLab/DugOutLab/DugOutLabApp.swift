@@ -11,6 +11,9 @@ struct DugOutLabApp: App {
         WindowGroup {
             ContentView(model: model)
                 .preferredColorScheme(.dark)
+                // covered whenever not active (.inactive comes first), so the app-switcher snapshot
+                // the system saves to disk shows no frame and no skeleton (R-30)
+                .overlay { if scenePhase != .active { PrivacyCover() } }
         }
         .onChange(of: scenePhase) { _, phase in
             // leaving the app throws the video away — nothing outlives a look at it
@@ -19,12 +22,22 @@ struct DugOutLabApp: App {
     }
 }
 
+struct PrivacyCover: View {
+    var body: some View {
+        ZStack {
+            Color.black.ignoresSafeArea()
+            Text("DugOut Lab").font(.headline).foregroundStyle(.secondary)
+        }
+    }
+}
+
 struct ContentView: View {
     @Bindable var model: LabModel
     @State private var pick: PhotosPickerItem?
+    @State private var path: [Int] = []
 
     var body: some View {
-        NavigationStack {
+        NavigationStack(path: $path) {
             List {
                 Section {
                     Text("Test build — never ships. The video stays on this phone, is deleted when you leave, and nothing is saved, logged or sent.")
@@ -41,16 +54,24 @@ struct ContentView: View {
             }
             .onChange(of: pick) { _, item in
                 guard let item else { return }
-                model.phase = .importing
+                let g = model.beginImport()
                 Task {
                     do {
                         guard let movie = try await item.loadTransferable(type: PickedMovie.self) else {
-                            model.phase = .failed("That item is not a video."); return
+                            model.importFailed(g, "That item is not a video."); return
                         }
-                        model.analyze(movie)
+                        model.analyze(movie, generation: g)
                     } catch {
-                        model.phase = .failed("That video could not be opened.")
+                        model.importFailed(g, "That video could not be opened.")
                     }
+                }
+            }
+            // a new pick or a Clear: leave any swing being watched — its video is gone
+            .onChange(of: model.generation) { _, _ in path = [] }
+            .navigationDestination(for: Int.self) { index in
+                if case .done(let result) = model.phase, let videoURL = model.videoURL,
+                   let swing = result.swings.first(where: { $0.index == index }) {
+                    SwingDetailView(swing: swing, videoURL: videoURL, info: result.segmentation.info)
                 }
             }
         }
@@ -67,14 +88,13 @@ struct ContentView: View {
         case .failed(let message):
             Section { Text(message).foregroundStyle(.orange) }
         case .done(let result):
-            RoundSections(result: result, videoURL: model.videoURL)
+            RoundSections(result: result)
         }
     }
 }
 
 struct RoundSections: View {
     let result: RoundResult
-    let videoURL: URL?
 
     /// Never call an ungraded round "clean": if no checkpoint could be measured, say so. (The JS
     /// app's composeFeedback() celebrates that case as a clean round — a defect, filed.)
@@ -91,13 +111,7 @@ struct RoundSections: View {
         }
         Section(result.swings.isEmpty ? "No swings found" : "\(result.swings.count) swing\(result.swings.count == 1 ? "" : "s")") {
             ForEach(result.swings, id: \.index) { swing in
-                if let videoURL {
-                    NavigationLink {
-                        SwingDetailView(swing: swing, videoURL: videoURL, info: result.segmentation.info)
-                    } label: { SwingRow(swing: swing) }
-                } else {
-                    SwingRow(swing: swing)
-                }
+                NavigationLink(value: swing.index) { SwingRow(swing: swing) }
             }
         }
         Section {
