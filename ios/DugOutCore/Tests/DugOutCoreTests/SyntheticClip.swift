@@ -12,7 +12,8 @@ enum SyntheticClip {
     static func write(to url: URL,
                       width: Int = 160, height: Int = 90,
                       ticks: [Int64],
-                      transform: CGAffineTransform = .identity) throws {
+                      transform: CGAffineTransform = .identity,
+                      draw: ((_ frame: Int, _ pixels: UnsafeMutablePointer<UInt8>, _ width: Int, _ height: Int, _ rowBytes: Int) -> Void)? = nil) throws {
         try? FileManager.default.removeItem(at: url)
         let writer = try AVAssetWriter(outputURL: url, fileType: .mov)
         let input = AVAssetWriterInput(mediaType: .video, outputSettings: [
@@ -37,10 +38,15 @@ enum SyntheticClip {
             var pb: CVPixelBuffer?
             CVPixelBufferPoolCreatePixelBuffer(nil, pool, &pb)
             guard let buffer = pb else { throw CocoaError(.fileWriteUnknown) }
-            // A different grey per frame so the encoder cannot collapse frames into one.
             CVPixelBufferLockBaseAddress(buffer, [])
-            memset(CVPixelBufferGetBaseAddress(buffer), Int32(40 + (i * 7) % 180),
-                   CVPixelBufferGetDataSize(buffer))
+            if let draw {
+                draw(i, CVPixelBufferGetBaseAddress(buffer)!.assumingMemoryBound(to: UInt8.self),
+                     width, height, CVPixelBufferGetBytesPerRow(buffer))
+            } else {
+                // A different grey per frame so the encoder cannot collapse frames into one.
+                memset(CVPixelBufferGetBaseAddress(buffer), Int32(40 + (i * 7) % 180),
+                       CVPixelBufferGetDataSize(buffer))
+            }
             CVPixelBufferUnlockBaseAddress(buffer, [])
             guard adaptor.append(buffer, withPresentationTime: CMTime(value: tick, timescale: 600)) else {
                 throw writer.error ?? CocoaError(.fileWriteUnknown)
@@ -77,5 +83,19 @@ enum SyntheticClip {
 
     static func tempURL(_ name: String) -> URL {
         FileManager.default.temporaryDirectory.appendingPathComponent("dugoutcore-\(name).mov")
+    }
+
+    /// Fill a BGRA frame with one grey level, then paint grey-level rectangles on it.
+    static func paint(_ px: UnsafeMutablePointer<UInt8>, _ w: Int, _ h: Int, _ rowBytes: Int,
+                      background: UInt8, rects: [(x: Int, y: Int, w: Int, h: Int, v: UInt8)]) {
+        for y in 0..<h { memset(px + y * rowBytes, Int32(background), w * 4) }
+        for r in rects {
+            for y in max(0, r.y)..<min(h, r.y + r.h) {
+                for x in max(0, r.x)..<min(w, r.x + r.w) {
+                    let o = y * rowBytes + x * 4
+                    px[o] = r.v; px[o + 1] = r.v; px[o + 2] = r.v; px[o + 3] = 255
+                }
+            }
+        }
     }
 }

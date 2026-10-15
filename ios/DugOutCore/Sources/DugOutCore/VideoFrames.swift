@@ -61,8 +61,8 @@ public func imageOrientation(for transform: CGAffineTransform) -> CGImagePropert
 public final class FrameReader {
     public let url: URL
     public let info: VideoTrackInfo
-    private let asset: AVURLAsset
-    private let track: AVAssetTrack
+    let asset: AVURLAsset          // internal: the audio reader and keyframe grabber share it
+    let track: AVAssetTrack
 
     private init(url: URL, asset: AVURLAsset, track: AVAssetTrack, info: VideoTrackInfo) {
         self.url = url
@@ -96,8 +96,8 @@ public final class FrameReader {
         return FrameReader(url: url, asset: asset, track: track, info: info)
     }
 
-    /// Calls `body` once per decoded frame, in presentation order, until the clip ends or the
-    /// frame time passes `upTo` seconds.
+    /// Calls `body` once per decoded frame, in presentation order, from `from` seconds (default:
+    /// the start) until the clip ends or the frame time passes `upTo` seconds.
     ///
     /// Frames arrive as CVPixelBuffers — the raw decoded image, not a copy — at full encoded
     /// resolution. They are only valid inside `body`; do not keep them.
@@ -105,9 +105,15 @@ public final class FrameReader {
     /// Frames that are not camera footage are counted and skipped, never silently dropped and
     /// never handed on — see `FrameReadReport`.
     @discardableResult
-    public func forEachFrame(upTo: Double? = nil,
+    public func forEachFrame(from: Double? = nil, upTo: Double? = nil,
                              _ body: (_ t: Double, _ frame: CVPixelBuffer) throws -> Void) throws -> FrameReadReport {
         let reader = try AVAssetReader(asset: asset)
+        if let from, from > 0 {
+            // Start decoding near `from` instead of at 0 (the reader seeks to the preceding sync
+            // frame itself); anything it still hands back from before `from` is skipped below.
+            let start = CMTime(seconds: from, preferredTimescale: 600)
+            reader.timeRange = CMTimeRange(start: start, end: .positiveInfinity)
+        }
         // Ask for decoded pixels in the camera's native YUV layout: no colour conversion, and it
         // is a format Vision accepts directly. Without outputSettings the reader would hand back
         // compressed samples in *decode* order, which is not presentation order for HEVC.
@@ -127,6 +133,7 @@ public final class FrameReader {
                 reader.cancelReading()
                 break
             }
+            if let from, t < from { continue }
             guard let frame = CMSampleBufferGetImageBuffer(sample) else {
                 report.imageless += 1
                 continue
