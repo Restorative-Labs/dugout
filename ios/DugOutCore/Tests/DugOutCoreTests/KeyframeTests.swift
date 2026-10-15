@@ -26,6 +26,23 @@ final class KeyframeTests: XCTestCase {
     func testOnScreenFrameH264() async throws { try await check(codec: .h264, name: "kf-h264") }
     func testOnScreenFrameHEVC() async throws { try await check(codec: .hevc, name: "kf-hevc") }
 
+    /// A frame with nobody in it has NO pose — not an all-zero one. The vendored MoveNet returns no
+    /// pose when its pose score is under 0.25, pose.js then returns null, and buildTrack skips the
+    /// frame. An all-zero pose would instead sit in the track: at keyframe 0 it makes orient() fail
+    /// the whole swing, elsewhere it shifts `u` and drops detectors.
+    func testEmptyFrameHasNoPose() async throws {
+        let url = SyntheticClip.tempURL("kf-empty")
+        try SyntheticClip.write(to: url, width: 320, height: 180, ticks: (0..<30).map { Int64($0) * 20 })
+        let info = try await FrameReader.open(url).info
+        let s = try await KeyframePoser.sample(url, info: info, times: [0, 0.5, 0.9])
+        XCTAssertEqual(s.sourcePTS.compactMap { $0 }.count, 3, "every keyframe was decoded")
+        for kf in s.poses { XCTAssertTrue(kf.pose == nil, "t=\(kf.t): an empty frame must give no pose, as pose.js does") }  // never print a pose
+        // and a swing whose every frame is empty is "no-pose", as buildTrack's empty track is
+        let a = Evaluator.analyzeSwing(frames: s.poses, contactT: 0.5, library: try TipLibrary.bundled())
+        XCTAssertFalse(a.ok)
+        XCTAssertEqual(a.reason, "no-pose")
+    }
+
     /// The real HEVC pitch clips: every one of the 24 keyframes of every swing must be a decoded frame.
     func testPitch01NoKeyframeGoesMissing() async throws {
         guard let dir = ProcessInfo.processInfo.environment["DUGOUT_CLIPS"], !dir.isEmpty else {

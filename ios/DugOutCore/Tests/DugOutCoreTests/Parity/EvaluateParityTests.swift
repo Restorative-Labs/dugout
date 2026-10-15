@@ -28,14 +28,20 @@ final class EvaluateParityTests: XCTestCase {
             "left_wrist": (250, 140), "right_wrist": (290, 140), "left_hip": (260, 165), "right_hip": (280, 165),
             "left_knee": (255, 215), "right_knee": (285, 215), "left_ankle": (250, 265), "right_ankle": (290, 265),
         ]
-        let n = rng.chance(0.85) ? 24 : rng.int(0, 34)
+        // t = i/10 exactly (u = t): at(track, 0.05) is an exact tie between u = 0 and u = 0.1, so the
+        // first-on-tie rule decides which frame stride.bucket / backsideCollapse read
+        let tieTrack = rng.chance(0.12)
+        let n = tieTrack ? 11 : (rng.chance(0.85) ? 24 : rng.int(0, 34))
         let frozenHips = rng.chance(0.1)                  // exercises maxDeriv with zero rate (null u)
-        let dropJointP = [0.0, 0.1, 0.4, 0.9][rng.int(0, 3)]
+        let dropJointP = tieTrack ? 0 : [0.0, 0.1, 0.4, 0.9][rng.int(0, 3)]
         let walk = rng.range(0, 60), rot = rng.range(-30, 30)
+        // vertical travel, so the y-reading detectors (bucket's lateral, backsideCollapse's drop,
+        // headMove's dy) see values inside their ramps, not a constant 0
+        let hipDrop = rng.range(-8, 45), noseDy = rng.range(-30, 30), ankleDy = rng.range(-70, 70)
         let start = rng.range(0, 30), span = rng.range(0.5, 6)
         return (0..<n).map { i in
-            let t = start + span * (n > 1 ? Double(i) / Double(n - 1) : 0)
-            if rng.chance(0.06) { return KeyframePose(t: t, pose: nil) }       // MoveNet found nobody
+            let t = tieTrack ? Double(i) / 10 : start + span * (n > 1 ? Double(i) / Double(n - 1) : 0)
+            if !tieTrack && rng.chance(0.06) { return KeyframePose(t: t, pose: nil) }   // MoveNet found nobody
             let f = n > 1 ? Double(i) / Double(n - 1) : 0
             let kps = moveNetNames.map { name -> Keypoint in
                 var (x, y) = base[name]!
@@ -45,6 +51,9 @@ final class EvaluateParityTests: XCTestCase {
                     return Keypoint(name: name, x: x, y: y, score: 0.9)
                 }
                 x += walk * f + jitter
+                if name == "nose" { y += noseDy * f + rng.range(-3, 3) }
+                if name.contains("hip") { y += hipDrop * f }
+                if name.contains("ankle") { y += ankleDy * f * (name.hasPrefix("left") ? 1 : 0.3) }
                 if name.contains("hip"), !frozenHips { x += (name.hasPrefix("left") ? -1 : 1) * rot * sin(f * .pi) }
                 if name.contains("shoulder") { x += (name.hasPrefix("left") ? -1 : 1) * rot * sin(min(1, f * 1.2) * .pi) }
                 if name.contains("wrist") || name.contains("elbow") { x += rng.range(-40, 40) * f; y += rng.range(-30, 30) * f }
@@ -70,6 +79,7 @@ final class EvaluateParityTests: XCTestCase {
     func testAnalyzeSwingMatchesOnRandomTracks() throws {
         var rng = SeededRandom(seed: 11)
         var analysed = 0, manyFaults = 0, zeroRateHips = 0
+        var inRamp: [String: Int] = [:]                  // detector → trials with conf strictly inside its range
         for trial in 0..<400 {
             let frames = Self.randomSwing(&rng)
             let contactT: Double? = rng.chance(0.8) ? (frames.first?.t ?? 0) + rng.range(-1, 5) : nil
@@ -78,6 +88,7 @@ final class EvaluateParityTests: XCTestCase {
             if let d = jsonDifference(try jsonObject(a), expected) { XCTFail("trial \(trial) (seed 11): \(d)"); return }
             if a.ok { analysed += 1 }
             if a.faults.count >= 10 { manyFaults += 1 }
+            for (id, f) in a.faults where f.conf > 0 && f.conf < 1 && f.conf != 0.55 { inRamp[id, default: 0] += 1 }
             if let track = Evaluator.buildTrack(frames), track.count > 2 {
                 let sig = Evaluator.series(track) { $0.hipSep }
                 if sig.count > 2, Evaluator.maxDeriv(sig).u == nil { zeroRateHips += 1 }
@@ -87,6 +98,10 @@ final class EvaluateParityTests: XCTestCase {
         XCTAssertGreaterThan(analysed, 200)
         XCTAssertGreaterThan(manyFaults, 100)
         XCTAssertGreaterThan(zeroRateHips, 5, "maxDeriv's null-u path (JS: null coerces to 0) never ran")
+        // every detector must have been read inside its ramp, not only pinned at 0 or 1 — a detector
+        // only ever seen saturated would hide a wrong ramp end (the review's E2/E3/E6 mutations)
+        XCTAssertEqual(inRamp.count, 18, "only these faults were read inside their range: \(inRamp.keys.sorted())")
+        for (id, n) in inRamp { XCTAssertGreaterThanOrEqual(n, 10, "\(id) read inside its range in only \(n) trials") }
     }
 
     func testRollupAndPriorityFocusMatch() throws {

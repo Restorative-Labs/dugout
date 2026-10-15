@@ -43,6 +43,7 @@ public final class JSReference {
         try load("js/evaluate.js", widening:
             "window.DugoutEvaluate = {\n    analyzeSwing,",
             to: "window.DugoutEvaluate = {\n    geom, orient, maxDeriv, series, at, between, buildTrack, analyzeSwing,")
+        try installSegmentTail()
         // Poses come from the test, not from MoveNet: frames are passed as {t, blob: index} and the
         // estimate stub returns the pose the test supplied for that index.
         ctx.evaluateScript("""
@@ -63,6 +64,34 @@ public final class JSReference {
         jsError = nil
         ctx.evaluateScript(source, withSourceURL: URL(fileURLWithPath: path))
         if let jsError { throw LoadError(description: "\(path): \(jsError)") }
+    }
+
+    /// segment()'s own lines from linking the ball tracks through the caps — the saturation guard,
+    /// findSwings and the 90 s / 15-swing caps with capHit — lifted out of js/segment.js between two
+    /// anchors (each asserted to occur exactly once) and installed as
+    /// `window.__segTail(samples, peaks, durationSec) → { swings, capHit, ballTracks }`.
+    /// So the guard and the caps parity is held to are the JS's own code, not a copy of it.
+    static let tailStart = "      let ballTracks = linkBallTracks(samples.ballFrames || []);"
+    static let tailEnd = "      // ---- keyframes ----"
+
+    private func installSegmentTail() throws {
+        let source = try String(contentsOf: Self.repoRoot.appendingPathComponent("js/segment.js"), encoding: .utf8)
+        guard source.components(separatedBy: Self.tailStart).count == 2,
+              source.components(separatedBy: Self.tailEnd).count == 2,
+              let a = source.range(of: Self.tailStart), let b = source.range(of: Self.tailEnd), a.lowerBound < b.lowerBound else {
+            throw LoadError(description: "js/segment.js: segment()'s guard/caps anchors changed — update JSReference before trusting parity")
+        }
+        let block = String(source[a.lowerBound..<b.lowerBound])
+        jsError = nil
+        let install = JSValue(object: block, in: ctx)
+        ctx.globalObject.setValue(install, forProperty: "__segTailSource")
+        ctx.evaluateScript("""
+            window.__segTail = new Function('samples', 'peaks', 'durationSec', 'CFG', 'findSwings', 'linkBallTracks',
+              window.__segTailSource + '\\n      return { swings, capHit, ballTracks };');
+            window.__segTailRun = (samples, peaks, durationSec) => window.__segTail(samples, peaks, durationSec,
+              window.DUGOUT_CONFIG, DugoutSegment.findSwings, DugoutSegment.linkBallTracks);
+        """)
+        if let jsError { throw LoadError(description: "segment() tail failed to install: \(jsError)") }
     }
 
     /// Evaluate and return JSON-decoded Foundation value. Async functions: pass an expression that

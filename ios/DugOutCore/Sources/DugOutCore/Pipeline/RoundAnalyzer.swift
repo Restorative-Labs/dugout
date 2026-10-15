@@ -33,13 +33,14 @@ public enum KeyframePoser {
         (.leftKnee, "left_knee"), (.rightKnee, "right_knee"), (.leftAnkle, "left_ankle"), (.rightAnkle, "right_ankle"),
     ]
 
-    /// A pose with every joint unfound. MoveNet SinglePose always returns a pose (with low scores)
-    /// even on an empty frame; Vision returns nothing. Recording this keeps the track the same
-    /// length — and so the same time base `u` — as the JS.
-    static var nobody: Pose { Pose(keypoints: Pose.jointNames.map { Keypoint(name: $0, x: 0, y: 0, score: 0) }) }
-
     /// Which decoded frame stood in for each keyframe time (its presentation time), or nil when no
     /// frame could be had. Internal: the tests check it; nothing displays it.
+    ///
+    /// A keyframe with nobody in it has `pose == nil`, exactly as in the JS: the vendored MoveNet
+    /// returns no pose when its pose score is under 0.25 (`minPoseScore`), pose.js estimate() then
+    /// returns null, and evaluate.js buildTrack() skips the frame. (An all-zero pose was recorded
+    /// here at first, on the wrong belief that MoveNet always returns one; at keyframe 0 it failed
+    /// the whole swing's orient(). Corrected 2026-10-15.)
     struct Sampled { var poses: [KeyframePose]; var sourcePTS: [Double?] }
 
     /// Pose at each time, on the frame ON SCREEN at that moment: the last frame presented at or
@@ -54,7 +55,7 @@ public enum KeyframePoser {
         let size = keyframeSize(info)
         let targets = times.map { max(0, min(info.duration, $0)) }             // seekTo clamps
         let order = targets.indices.sorted { targets[$0] < targets[$1] }
-        var poses = [Pose?](repeating: nil, count: times.count)
+        var poses = [Pose?](repeating: nil, count: times.count)       // nil: nobody, or no frame
         var pts = [Double?](repeating: nil, count: times.count)
         var next = 0                                     // next index into `order` still to assign
         var prev: (frame: CVPixelBuffer, t: Double)?
@@ -68,6 +69,7 @@ public enum KeyframePoser {
 
         // start a little early so the frame already on screen at the first target is decoded too
         try reader.forEachFrame(from: max(0, targets[order[0]] - 1.0), upTo: targets[order[order.count - 1]] + 1.0) { t, frame in
+            try Task.checkCancellation()
             // targets before this frame's time belong to the previous frame (or, before the very
             // first frame, to this one — a seek before the first frame shows the first frame)
             var end = next
@@ -76,16 +78,16 @@ public enum KeyframePoser {
             prev = (frame, t)
         }
         if let prev { try assign(prev.frame, at: prev.t, upTo: order.count) }   // the rest: the last frame
-        return Sampled(poses: times.indices.map { KeyframePose(t: times[$0], pose: poses[$0] ?? nobody) },
-                       sourcePTS: pts)
+        return Sampled(poses: times.indices.map { KeyframePose(t: times[$0], pose: poses[$0]) }, sourcePTS: pts)
     }
 
+    /// The hitter's pose in keyframe pixels, or nil when Vision finds nobody (pose.js: null).
     static func pose(from frame: CVPixelBuffer, orientation: CGImagePropertyOrientation,
-                     size: (w: Double, h: Double)) throws -> Pose {
+                     size: (w: Double, h: Double)) throws -> Pose? {
         let request = VNDetectHumanBodyPoseRequest()
         try VNImageRequestHandler(cvPixelBuffer: frame, orientation: orientation, options: [:]).perform([request])
         guard let person = BodyPoseDetector.pickSubject(request.results ?? []),
-              let points = try? person.recognizedPoints(.all) else { return nobody }
+              let points = try? person.recognizedPoints(.all) else { return nil }
         return Pose(keypoints: names.map { vn, name in
             guard let p = points[vn], p.confidence > 0 else { return Keypoint(name: name, x: 0, y: 0, score: 0) }
             // Vision: normalised to the upright picture, origin bottom-left. Keyframe pixels: y down.
@@ -128,6 +130,7 @@ public enum RoundAnalyzer {
         let seg = try await Segmenter.segment(url) { progress?("Finding swings", $0 * 0.7) }
         var swings: [AnalyzedSwing] = []
         for (i, span) in seg.swings.enumerated() {
+            try Task.checkCancellation()
             progress?("Reading swing \(i + 1) of \(seg.swings.count)", 0.7 + 0.3 * Double(i) / Double(max(1, seg.swings.count)))
             let frames = try await KeyframePoser.poses(url, info: seg.info,
                                                        times: KeyframePoser.times(for: span, duration: seg.durationSec))
@@ -158,6 +161,7 @@ public enum PoseOverlay {
         let request = VNDetectHumanBodyPoseRequest()
         var out: [OverlayFrame] = []
         try reader.forEachFrame(from: start, upTo: end) { t, frame in
+            try Task.checkCancellation()
             try VNImageRequestHandler(cvPixelBuffer: frame, orientation: reader.info.orientation, options: [:]).perform([request])
             var joints: [String: (x: Double, y: Double, confidence: Double)] = [:]
             if let person = BodyPoseDetector.pickSubject(request.results ?? []),

@@ -76,4 +76,18 @@ final class SegmenterTests: XCTestCase {
         ctx.draw(image, in: CGRect(x: 0, y: 0, width: w, height: h))
         return centroid(px, w, h)
     }
+
+    /// Clearing a video in the Lab cancels its analysis: the pipeline must stop reading frames and
+    /// throw, not finish and hand back a result for a video that is gone.
+    func testCancelledAnalysisStopsAndReturnsNothing() async throws {
+        let url = SyntheticClip.tempURL("cancelled")
+        try SyntheticClip.write(to: url, width: 320, height: 180, ticks: (0..<300).map { Int64($0) * 20 })
+        let task = Task { try await RoundAnalyzer.analyze(url) }
+        task.cancel()
+        do {
+            _ = try await task.value
+            XCTFail("a cancelled analysis must not produce a result")
+        } catch is CancellationError {
+        }
+    }
 }

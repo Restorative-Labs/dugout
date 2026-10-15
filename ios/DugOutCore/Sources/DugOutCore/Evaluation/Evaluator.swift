@@ -5,7 +5,8 @@ import Foundation
 //
 // Honesty rules carried over unchanged: a fault whose library entry has `detector: null` is never
 // guessed at; ER-03 never names a fault seen in one swing; internal scores never leave this module
-// (R-02) — they are `internal`, so app code cannot even read them.
+// (R-02) — they are `internal`, the result types are not Codable and hide them from Mirror, and
+// only this package's parity tooling can encode them (ParityEncoding.swift, `package` access).
 //
 // JavaScript semantics that change answers are reproduced deliberately and marked "JS:".
 // EvaluateParityTests runs this and the real evaluate.js on identical tracks.
@@ -25,7 +26,7 @@ public struct Orientation: Codable, Equatable {
     public var weak: Bool
 }
 
-public struct SwingAnalysis: Codable, Equatable {
+public struct SwingAnalysis: Equatable {
     public var ok: Bool
     /// Why a swing could not be analysed: "no-pose", "no-orientation", "no-scale".
     public var reason: String?
@@ -61,7 +62,7 @@ public struct Philosophy: Codable, Equatable {
 }
 
 /// PASS/FAIL for one checkpoint. `internalScore` is internal by design — never rendered (R-02).
-public struct CheckpointMark: Codable, Equatable {
+public struct CheckpointMark: Equatable {
     public var pass: Bool
     /// false when nothing measurable existed for this checkpoint — show "not measured", not PASS.
     public var assessed: Bool
@@ -70,16 +71,6 @@ public struct CheckpointMark: Codable, Equatable {
     public var evidenceSwingIds: [String]
 
     enum CodingKeys: String, CodingKey { case pass, assessed, internalScore, faultIds, evidenceSwingIds }
-
-    // internalScore is always present in the JS object (null when unassessed); keep the same shape
-    public func encode(to encoder: Encoder) throws {
-        var c = encoder.container(keyedBy: CodingKeys.self)
-        try c.encode(pass, forKey: .pass)
-        try c.encode(assessed, forKey: .assessed)
-        try c.encode(internalScore, forKey: .internalScore)
-        try c.encode(faultIds, forKey: .faultIds)
-        try c.encode(evidenceSwingIds, forKey: .evidenceSwingIds)
-    }
 }
 
 // MARK: - JS arithmetic helpers
@@ -438,16 +429,18 @@ public enum Evaluator {
         return fails[0]
     }
 
-    /// JavaScriptCore's Array.prototype.sort with a comparator, for short arrays (verified up to
-    /// 20 elements): binary insertion sort. Each next element is compared with the middle of the sorted prefix as
-    /// comparator(element, middle) and goes left only when the result is negative (stable on ties).
+    /// JavaScriptCore's Array.prototype.sort with a comparator, for arrays of up to 64 elements
+    /// (verified call for call against the macOS 26 JavaScriptCore; JSC switches to merging at 65,
+    /// which this does not reproduce — priorityFocus sorts at most 6): binary insertion sort. Each
+    /// next element is compared with the middle of the sorted prefix as comparator(element, middle)
+    /// and goes left only when the result is negative (stable on ties).
     /// Established by recording JSC's comparator call order; TipLibrary-independent test
     /// EvaluateParityTests.testSortMatchesJavaScriptCoreCallForCall pins it.
     static func jscSort<T>(_ array: inout [T], _ comparator: (T, T) -> Double) {
         guard array.count > 1 else { return }
         // From 8 elements up, JSC first extends the already-ascending prefix (comparing each
         // element with its predecessor) and binary-inserts only what follows. priorityFocus never
-        // sorts more than 6 checkpoints; this branch is here so the port is faithful anyway.
+        // sorts more than 6 checkpoints; this branch is here so the port is faithful up to 64.
         var start = 1
         if array.count >= 8 {
             while start < array.count && comparator(array[start], array[start - 1]) >= 0 { start += 1 }

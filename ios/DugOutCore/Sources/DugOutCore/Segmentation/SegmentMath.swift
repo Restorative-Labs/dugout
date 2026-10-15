@@ -33,7 +33,7 @@ public struct BallTrack: Codable, Equatable {
 }
 
 /// One swing window: padded start/end, the contact moment, whether a contact sound confirmed it.
-public struct SwingSpan: Codable, Equatable {
+public struct SwingSpan: Equatable {
     public var start: Double
     public var end: Double
     public var contactT: Double
@@ -275,6 +275,18 @@ public enum SegmentMath {
     }
 
     /// segment.js segment(), the caps step: 90 s OR 15 swings, whichever comes first.
+    /// segment()'s decision, from linking the ball tracks through the caps: link, the saturation
+    /// guard, findSwings, then the 90 s / 15-swing caps. Segmenter calls exactly this; the parity
+    /// tests hold it to the JS's own lines for the same steps (JSReference.installSegmentTail).
+    public static func decide(samples: [MotionSample], ballFrames: [BallFrame], peaks: [Double], durationSec: Double)
+        -> (swings: [SwingSpan], capHit: String?, tracks: [BallTrack], saturated: Bool) {
+        var tracks = linkBallTracks(ballFrames)
+        let saturated = tracks.count > Tuning.ballMaxTracks
+        if saturated { tracks = [] }   // a gate that matches everything is worse than no gate
+        let capped = applyCaps(findSwings(samples: samples, peaks: peaks, ballTracks: tracks), durationSec: durationSec)
+        return (capped.swings, capped.capHit, tracks, saturated)
+    }
+
     public static func applyCaps(_ swings: [SwingSpan], durationSec: Double) -> (swings: [SwingSpan], capHit: String?) {
         var out = swings
         var capHit: String? = nil

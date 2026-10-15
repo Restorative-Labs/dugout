@@ -8,10 +8,12 @@ import ImageIO
 ///
 /// The JS drew each video frame — upright, as the browser displays it — onto a 192×108 canvas
 /// (motion) and a 480×270 canvas (ball), then computed luma. Here the luma comes straight from the
-/// decoder's Y plane and is scaled with vImage. Two differences from the browser, both in the
-/// INPUT, not in the logic (which is held to the JS by SegmentParityTests): the decoder's luma
-/// (BT.709 for HD) instead of the browser's 0.299/0.587/0.114 recomputation from RGB, and vImage's
-/// resampling instead of canvas drawImage's. Both are small next to the 18 and 26 thresholds.
+/// decoder's Y plane and is scaled with vImage. These differ from the browser in the INPUT, not
+/// in the logic (which is held to the JS by the parity tests): the decoder's luma (BT.709 for HD)
+/// instead of the browser's 0.299/0.587/0.114 recomputation from RGB, and vImage's resampling
+/// instead of canvas drawImage's. They are NOT negligible: measured 2026-10-15, browser-style RGB
+/// luma alone changes the swing count on 2 of the 7 regression clips, and the browser's cadence
+/// (about 1 frame in 4, where this reads every frame) on 4 of 7. CANON R-44 holds that open.
 struct GrayScaler {
     let orientation: CGImagePropertyOrientation
 
@@ -58,8 +60,11 @@ struct GrayScaler {
     }
 }
 
-/// Channel 0 of the clip's audio as floats, at the file's own sample rate (segment.js decoded it
-/// with an AudioContext at the device rate; the 10 ms envelope makes the rate immaterial).
+/// Channel 0 of the clip's audio as floats, at the file's own sample rate. segment.js decoded it
+/// with an AudioContext, which resamples to the device rate. The difference is immaterial only at
+/// rates with a whole number of samples per 10 ms window (48, 44.1, 32 kHz — what an iPhone
+/// records); at 22.05 or 11.025 kHz the envelope's window labels would drift (a click at 60 s
+/// reads as 60.14 s). Not resampled here; recorded as a known limit.
 enum AudioPCM {
     static func channel0(of asset: AVAsset) async throws -> (samples: [Float], rate: Double)? {
         guard let track = try await asset.loadTracks(withMediaType: .audio).first else { return nil }
@@ -107,6 +112,11 @@ public struct SegmentationResult {
     /// The ball detector found so many "tracks" it was tracking noise, so it was ignored.
     public var ballSaturated: Bool
     public var skipped: FrameReadReport
+    /// The intermediate measurements, for the parity harness to compare in full (package-only).
+    package var samples: [MotionSample] = []
+    package var peaks: [Double] = []
+    /// Ball tracks after the saturation guard (empty when saturated), as findSwings saw them.
+    package var tracks: [BallTrack] = []
 }
 
 /// Sees every frame's measured grids — used by the parity runner to feed the JS the identical input.
@@ -125,6 +135,7 @@ public enum Segmenter {
         var prevMotion: [Float]? = nil
         var prevBall: [UInt8]? = nil
         let skipped = try reader.forEachFrame { t, frame in
+            try Task.checkCancellation()                  // the video was cleared: stop reading it
             let (m8, b) = scaler.grays(frame)
             observer?(t, m8, b)
             let m = m8.map(Float.init)
@@ -143,15 +154,11 @@ public enum Segmenter {
             peaks = SegmentMath.audioPeaks(samples: pcm.samples, sampleRate: pcm.rate)
         }
 
-        // ---- ball tracks, with the saturation guard ----
-        var tracks = SegmentMath.linkBallTracks(ballFrames)
-        let saturated = tracks.count > Tuning.ballMaxTracks
-        if saturated { tracks = [] }   // a gate that matches everything is worse than no gate
-
-        let swings = SegmentMath.findSwings(samples: samples, peaks: peaks, ballTracks: tracks)
-        let capped = SegmentMath.applyCaps(swings, durationSec: reader.info.duration)
-        return SegmentationResult(swings: capped.swings, capHit: capped.capHit, durationSec: reader.info.duration,
+        // ---- ball tracks (with the saturation guard), swings, caps ----
+        let d = SegmentMath.decide(samples: samples, ballFrames: ballFrames, peaks: peaks, durationSec: reader.info.duration)
+        return SegmentationResult(swings: d.swings, capHit: d.capHit, durationSec: reader.info.duration,
                                   info: reader.info, sampleCount: samples.count, audioPeakCount: peaks.count,
-                                  ballTrackCount: saturated ? 0 : tracks.count, ballSaturated: saturated, skipped: skipped)
+                                  ballTrackCount: d.tracks.count, ballSaturated: d.saturated, skipped: skipped,
+                                  samples: samples, peaks: peaks, tracks: d.tracks)
     }
 }

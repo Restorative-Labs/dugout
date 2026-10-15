@@ -224,19 +224,30 @@ case "parity":
         FileHandle.standardError.write("\(clip.lastPathComponent)…\n".data(using: .utf8)!)
         reports.append(try await ParityRunner.run(clip) { FileHandle.standardError.write("  \($0)\n".data(using: .utf8)!) })
     }
-    print("clip               JS swings  native swings  segmentation      checkpoint matches   round")
+    // Decision-logic parity: both sides read the SAME native frames and Vision poses. It proves the
+    // port, not that native finds what the web app finds on the phone (CANON R-44).
+    func pad(_ x: String, _ n: Int) -> String { x.padding(toLength: n, withPad: " ", startingAt: 0) }
+    print(pad("clip", 19) + pad("JS logic", 10) + pad("native", 8) + pad("segmentation", 30)
+          + pad("graded agree", 14) + pad("— on both", 11) + pad("round", 11) + "focus")
     for r in reports {
         let seg = r.segmentationIdentical ? "identical" : "DIFFERS at \(r.segmentationDiffAt ?? "?")"
-        print(r.clip.padding(toLength: 19, withPad: " ", startingAt: 0)
-              + "\(r.js.swings.count)".padding(toLength: 11, withPad: " ", startingAt: 0)
-              + "\(r.native.swings.count)".padding(toLength: 15, withPad: " ", startingAt: 0)
-              + seg.padding(toLength: 18, withPad: " ", startingAt: 0)
-              + "\(r.checkpointMatches)/\(r.checkpointTotal)".padding(toLength: 21, withPad: " ", startingAt: 0)
-              + (r.roundIdentical ? "identical" : "DIFFERS"))
-        for s in r.swings where !s.analysisIdentical {
-            print("   swing \(s.index + 1): analysis differs at \(s.analysisDiffAt ?? "?")")
+        let graded = r.checkpointTotal - r.bothUnassessed
+        print(pad(r.clip, 19) + pad("\(r.js.swings.count)", 10) + pad("\(r.native.swings.count)", 8) + pad(seg, 30)
+              + (r.marksComparable
+                 ? pad("\(r.gradedMatches)/\(graded)", 14) + pad("\(r.bothUnassessed)", 11)
+                   + pad(r.roundIdentical ? "identical" : "DIFFERS", 11) + (r.focusIdentical ? "identical" : "DIFFERS")
+                 : "n/a (segmentation differs)"))
+        for s in r.swings {
+            var notes: [String] = []
+            if !s.analysisIdentical { notes.append("analysis differs at \(s.analysisDiffAt ?? "?")") }
+            if !s.ok { notes.append("not analysed (\(s.reason ?? "?"))") }
+            if s.poselessKeyframes > 0 { notes.append("\(s.poselessKeyframes)/\(Tuning.keyframesPerSwing) keyframes with nobody found") }
+            if !notes.isEmpty { print("   swing \(s.index + 1): " + notes.joined(separator: " · ")) }
         }
     }
+    let total = reports.reduce(0) { $0 + $1.checkpointTotal }, both = reports.reduce(0) { $0 + $1.bothUnassessed }
+    print("total        \(reports.reduce(0) { $0 + $1.gradedMatches })/\(total - both) graded marks agree · \(both) not assessed on either side · "
+          + (reports.allSatisfy(\.identical) ? "ALL IDENTICAL" : "NOT IDENTICAL"))
     if let out = option("--json", in: args) {
         let enc = JSONEncoder(); enc.outputFormatting = [.prettyPrinted, .sortedKeys]
         try enc.encode(reports).write(to: URL(fileURLWithPath: out))

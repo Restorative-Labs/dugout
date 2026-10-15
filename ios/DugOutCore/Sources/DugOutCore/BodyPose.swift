@@ -55,8 +55,9 @@ public struct PoseFrame: Equatable {
         self.joints = joints
     }
 
-    /// 0 when the joint (or the whole person) was not found — a miss counts against the model,
-    /// the same way MoveNet's single-pose output reports a low score rather than nothing.
+    /// 0 when the joint (or the whole person) was not found — for this measurement a miss counts
+    /// against the model. (MoveNet reports a low score for a weak joint, and no pose at all when its
+    /// pose score is under 0.25; the evaluator path mirrors the latter — see KeyframePoser.)
     public func confidence(_ joint: TrackedJoint) -> Double { joints[joint]?.confidence ?? 0 }
 }
 

@@ -3,16 +3,19 @@ import DugOutCore
 import Foundation
 import JavaScriptCore
 
-/// End-to-end parity on a real clip — TEST TOOLING, never linked by the app.
+/// Decision-logic parity on a real clip — TEST TOOLING, never linked by the app.
 ///
 /// One decode of the clip feeds BOTH implementations the same measurements:
 ///   * segmentation: every frame's upright motion/ball grids and the decoded audio go to the Swift
 ///     Segmenter and, identically, to the app's own segment.js functions running in JavaScriptCore
-///     (diffEnergy, ballBlobs, linkBallTracks, audioPeaks, findSwings);
+///     (diffEnergy, ballBlobs, linkBallTracks, audioPeaks, and segment()'s own guard/findSwings/caps
+///     lines lifted out of the file — see JSReference.installSegmentTail);
 ///   * evaluation: the same Vision keyframe poses go to the Swift Evaluator and to evaluate.js's
-///     real analyzeSwing / rollup.
-/// So any difference is a port bug, not a decoder, codec or pose-model difference — those are
-/// what the browser-vs-native comparison measures, and they are reported separately.
+///     real analyzeSwing / rollup / priorityFocus.
+/// So any difference is a port bug. What this does NOT show is that native finds what the web app
+/// finds on the phone: the browser samples ~1 frame in 4 (rVFC at 4×), computes luma from RGB on a
+/// canvas, and poses with MoveNet. Those input differences change swing counts on some clips and are
+/// measured separately (CANON R-44), not here.
 ///
 /// Reports carry PASS/FAIL and counts only. Where two values differ, only the PATH of the
 /// difference is reported — never an internal score (R-02).
@@ -20,6 +23,7 @@ public struct ClipParity: Codable {
     public struct Swing: Codable { public var start: Double; public var end: Double; public var contactT: Double; public var audioConfirmed: Bool }
     public struct Side: Codable {
         public var swings: [Swing]
+        public var capHit: String?
         public var samples: Int
         public var audioPeaks: Int
         public var ballTracks: Int
@@ -28,22 +32,44 @@ public struct ClipParity: Codable {
         public var index: Int
         public var analysisIdentical: Bool
         public var analysisDiffAt: String?
+        /// Whether the swing could be analysed at all, and why not ("no-orientation", …).
+        public var ok: Bool
+        public var reason: String?
+        /// Keyframes with no pose (Vision found nobody), out of KEYFRAMES_PER_SWING.
+        public var poselessKeyframes: Int
         public var native: [String: String]      // checkpoint → PASS / FAIL / —
         public var js: [String: String]
-        public var checkpointMatches: Int
+        /// Checkpoints where both sides gave the same PASS or FAIL.
+        public var gradedMatches: Int
+        /// Checkpoints that neither side could assess ("—" on both): agreement, but about nothing.
+        public var bothUnassessed: Int
+        public var checkpointMatches: Int { gradedMatches + bothUnassessed }
     }
     public var clip: String
     public var durationSec: Double
     public var native: Side
     public var js: Side
+    /// Swings, capHit, every motion sample, every audio peak and every ball track compared in full.
     public var segmentationIdentical: Bool
     public var segmentationDiffAt: String?
     public var swings: [SwingEval]
     public var roundNative: [String: String]
     public var roundJS: [String: String]
     public var roundIdentical: Bool
+    public var focusNative: String?
+    public var focusJS: String?
+    public var focusIdentical: Bool
     public var checkpointMatches: Int { swings.reduce(0) { $0 + $1.checkpointMatches } }
+    public var gradedMatches: Int { swings.reduce(0) { $0 + $1.gradedMatches } }
+    public var bothUnassessed: Int { swings.reduce(0) { $0 + $1.bothUnassessed } }
     public var checkpointTotal: Int { swings.count * 6 }
+    /// Marks are computed on the native swing windows; they only mean "the same" when segmentation is.
+    public var marksComparable: Bool { segmentationIdentical }
+    /// Everything identical: the gate.
+    public var identical: Bool {
+        segmentationIdentical && roundIdentical && focusIdentical
+            && swings.allSatisfy { $0.analysisIdentical && $0.checkpointMatches == 6 }
+    }
 }
 
 public enum ParityRunner {
@@ -61,6 +87,8 @@ public enum ParityRunner {
     static func encode<T: Encodable>(_ v: T) throws -> Any {
         try JSONSerialization.jsonObject(with: JSONEncoder().encode(v), options: [.fragmentsAllowed])
     }
+    /// Result types with internal numbers encode only through the package-level parity encoder.
+    static func encode<T: ParityEncodable>(_ v: T) throws -> Any { try ParityJSON.object(v) }
 
     /// First path where two JSON trees differ (numbers to a 1e-9 relative tolerance), or nil.
     static func firstDiff(_ a: Any?, _ b: Any?, _ path: String = "$") -> String? {
@@ -84,6 +112,8 @@ public enum ParityRunner {
         }
     }
 
+    public struct FeedError: Error, CustomStringConvertible { public let description: String }
+
     public static func run(_ url: URL, ageBand: String = "11-13",
                            progress: ((String) -> Void)? = nil) async throws -> ClipParity {
         let js = try JSReference()
@@ -101,33 +131,40 @@ public enum ParityRunner {
         """)
 
         // ---- one decode, both segmenters ----
+        // A JS exception inside the feed must fail the run, not vanish (it would otherwise surface,
+        // if at all, only as a changed number much later).
+        var feedError: String?
+        func check(_ stage: String) { if feedError == nil, let e = js.jsError { feedError = "\(stage): \(e)" } }
         progress?("decoding + segmenting (Swift and JS on the same frames)")
         let seg = try await Segmenter.segment(url, observer: { t, m, b in
             js.setFloat32("__m", m.map(Float.init))
             js.setBytes("__b", b)
             js.ctx.evaluateScript("__push(\(t), __m, __b)")
+            check("frame at \(t)")
         }, audioObserver: { samples, rate in
             js.setFloat32("__pcm", samples)
             js.ctx.evaluateScript("window.__audio = { samples: __pcm, rate: \(rate) };")
+            check("audio")
         })
+        if let feedError { throw FeedError(description: "JS threw while being fed frames — \(feedError)") }
         let jsSeg = try js.json("""
             DugoutSegment.audioPeaks(new Blob([])).then((peaks) => {
-              let tracks = DugoutSegment.linkBallTracks(__seg.ballFrames);
-              if (tracks.length > DUGOUT_CONFIG.BALL_MAX_TRACKS) tracks = [];   // segment(): saturation guard
-              let swings = DugoutSegment.findSwings(__seg.samples, peaks, tracks);
-              const CFG = DUGOUT_CONFIG, durationSec = \(seg.durationSec);
-              if (durationSec > CFG.CAP_SECONDS) {                              // segment(): caps
-                swings = swings.filter((s) => s.start < CFG.CAP_SECONDS);
-                swings.forEach((s) => { s.end = Math.min(s.end, CFG.CAP_SECONDS); });
-              }
-              if (swings.length > CFG.CAP_SWINGS) swings = swings.slice(0, CFG.CAP_SWINGS);
-              return { swings, samples: __seg.samples.length, peaks: peaks.length, tracks: tracks.length };
+              const samples = __seg.samples;
+              samples.ballFrames = __seg.ballFrames;              // as sampleMotion() returns them
+              const r = __segTailRun(samples, peaks, \(seg.durationSec));   // segment()'s own lines
+              return { swings: r.swings, capHit: r.capHit, samples, peaks, tracks: r.ballTracks };
             })
         """) as? [String: Any] ?? [:]
 
         let nativeSwingsJSON = try encode(seg.swings)
         let jsSwings = jsSeg["swings"] as? [Any] ?? []
-        let segDiff = firstDiff(nativeSwingsJSON, jsSwings)
+        let jsCapHit = jsSeg["capHit"] as? String
+        let nativeSamples = try encode(seg.samples), nativeTracks = try encode(seg.tracks)
+        let segDiff = firstDiff(nativeSwingsJSON, jsSwings, "$.swings")
+            ?? (seg.capHit == jsCapHit ? nil : "$.capHit")
+            ?? firstDiff(nativeSamples, jsSeg["samples"], "$.samples")
+            ?? firstDiff(seg.peaks, jsSeg["peaks"], "$.peaks")
+            ?? firstDiff(nativeTracks, jsSeg["tracks"], "$.tracks")
         func side(_ arr: Any?) -> [ClipParity.Swing] {
             ((arr as? [[String: Any]]) ?? []).map {
                 ClipParity.Swing(start: $0["start"] as? Double ?? .nan, end: $0["end"] as? Double ?? .nan,
@@ -139,6 +176,7 @@ public enum ParityRunner {
         var evals: [ClipParity.SwingEval] = []
         var nativeAnalyses: [IdentifiedAnalysis] = []
         var jsAnalyses: [Any] = []
+        try js.set("__phi", json: try encode(Philosophy.default))
         for (i, span) in seg.swings.enumerated() {
             progress?("swing \(i + 1)/\(seg.swings.count): Vision keyframe poses → both evaluators")
             let frames = try await KeyframePoser.poses(url, info: seg.info,
@@ -156,26 +194,36 @@ public enum ParityRunner {
 
             let nativeMarks = Evaluator.marksForSwing(native, ageBand: ageBand, philosophy: .default, library: library)
             try js.set("__one", json: [jsA])
-            try js.set("__phi", json: try encode(Philosophy.default))
             let jsMarks = try js.json("DugoutEvaluate.rollup(__one, { ageBand: '\(ageBand)' }, __phi)")
             let n = labels(try encode(nativeMarks)), j = labels(jsMarks)
-            evals.append(ClipParity.SwingEval(index: i, analysisIdentical: aDiff == nil, analysisDiffAt: aDiff,
-                                              native: n, js: j,
-                                              checkpointMatches: Tuning.checkpoints.filter { n[$0] == j[$0] }.count))
+            let same = Tuning.checkpoints.filter { n[$0] == j[$0] }
+            evals.append(ClipParity.SwingEval(
+                index: i, analysisIdentical: aDiff == nil, analysisDiffAt: aDiff,
+                ok: native.ok, reason: native.reason, poselessKeyframes: frames.filter { $0.pose == nil }.count,
+                native: n, js: j,
+                gradedMatches: same.filter { n[$0] != "—" }.count,
+                bothUnassessed: same.filter { n[$0] == "—" }.count))
         }
         let nativeRound = Evaluator.rollup(nativeAnalyses, ageBand: ageBand, philosophy: .default, library: library)
+        let nativeFocus = Evaluator.priorityFocus(nativeRound, philosophy: .default)
         try js.set("__all", json: jsAnalyses)
-        let jsRound = try js.json("DugoutEvaluate.rollup(__all, { ageBand: '\(ageBand)' }, __phi)")
+        let jsRoundAndFocus = try js.json("""
+            (() => { const r = DugoutEvaluate.rollup(__all, { ageBand: '\(ageBand)' }, __phi);
+                     return { round: r, focus: DugoutEvaluate.priorityFocus(r, __phi) }; })()
+        """) as? [String: Any] ?? [:]
+        let jsRound = jsRoundAndFocus["round"]
+        let jsFocus = jsRoundAndFocus["focus"] as? String
         let roundDiff = firstDiff(try encode(nativeRound), jsRound)
 
         return ClipParity(
             clip: url.lastPathComponent, durationSec: seg.durationSec,
-            native: .init(swings: side(nativeSwingsJSON), samples: seg.sampleCount, audioPeaks: seg.audioPeakCount,
-                          ballTracks: seg.ballTrackCount),
-            js: .init(swings: side(jsSwings), samples: jsSeg["samples"] as? Int ?? -1,
-                      audioPeaks: jsSeg["peaks"] as? Int ?? -1, ballTracks: jsSeg["tracks"] as? Int ?? -1),
+            native: .init(swings: side(nativeSwingsJSON), capHit: seg.capHit, samples: seg.sampleCount,
+                          audioPeaks: seg.audioPeakCount, ballTracks: seg.ballTrackCount),
+            js: .init(swings: side(jsSwings), capHit: jsCapHit, samples: (jsSeg["samples"] as? [Any])?.count ?? -1,
+                      audioPeaks: (jsSeg["peaks"] as? [Any])?.count ?? -1, ballTracks: (jsSeg["tracks"] as? [Any])?.count ?? -1),
             segmentationIdentical: segDiff == nil, segmentationDiffAt: segDiff,
             swings: evals, roundNative: labels(try encode(nativeRound)), roundJS: labels(jsRound),
-            roundIdentical: roundDiff == nil)
+            roundIdentical: roundDiff == nil,
+            focusNative: nativeFocus, focusJS: jsFocus, focusIdentical: nativeFocus == jsFocus)
     }
 }

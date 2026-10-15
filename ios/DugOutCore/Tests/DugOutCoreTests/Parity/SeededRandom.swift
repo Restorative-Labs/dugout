@@ -1,4 +1,5 @@
 import Foundation
+@testable import DugOutCore
 
 /// SplitMix64 — a tiny deterministic generator, so randomised parity tests fail the same way
 /// every run and any failure can be replayed from its seed.
@@ -19,7 +20,8 @@ struct SeededRandom: RandomNumberGenerator {
 }
 
 /// Compare two JSON-shaped trees (the Swift side encoded the same way), allowing a relative
-/// tolerance on numbers only for floating-point rounding. Returns the first difference.
+/// tolerance on numbers only for floating-point rounding. Returns the PATH of the first
+/// difference — never a numeric value, which may be an internal score (R-02, R-13).
 func jsonDifference(_ a: Any?, _ b: Any?, at path: String = "$", tolerance: Double = 1e-9) -> String? {
     switch (a, b) {
     case (nil, nil), (is NSNull, is NSNull), (nil, is NSNull), (is NSNull, nil):
@@ -34,14 +36,14 @@ func jsonDifference(_ a: Any?, _ b: Any?, at path: String = "$", tolerance: Doub
         return nil
     case let (x as NSNumber, y as NSNumber):
         let xb = CFGetTypeID(x) == CFBooleanGetTypeID(), yb = CFGetTypeID(y) == CFBooleanGetTypeID()
-        if xb || yb { return xb == yb && x.boolValue == y.boolValue ? nil : "\(path): \(x) vs \(y)" }
+        if xb || yb { return xb == yb && x.boolValue == y.boolValue ? nil : "\(path): boolean differs" }
         let dx = x.doubleValue, dy = y.doubleValue
         if dx == dy { return nil }
-        return abs(dx - dy) <= tolerance * max(1, abs(dx), abs(dy)) ? nil : "\(path): \(dx) vs \(dy)"
+        return abs(dx - dy) <= tolerance * max(1, abs(dx), abs(dy)) ? nil : "\(path): number differs"
     case let (x as String, y as String):
         return x == y ? nil : "\(path): \"\(x)\" vs \"\(y)\""
     default:
-        return "\(path): \(String(describing: a)) vs \(String(describing: b))"
+        return "\(path): \(a.map { "\(type(of: $0))" } ?? "nil") vs \(b.map { "\(type(of: $0))" } ?? "nil")"
     }
 }
 
@@ -49,3 +51,6 @@ func jsonDifference(_ a: Any?, _ b: Any?, at path: String = "$", tolerance: Doub
 func jsonObject<T: Encodable>(_ value: T) throws -> Any {
     try JSONSerialization.jsonObject(with: JSONEncoder().encode(value), options: [.fragmentsAllowed])
 }
+
+/// The same for the result types that carry internal numbers (package-only encoding, R-02).
+func jsonObject<T: ParityEncodable>(_ value: T) throws -> Any { try ParityJSON.object(value) }
