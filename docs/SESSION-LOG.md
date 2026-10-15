@@ -15,6 +15,31 @@ Next: <the one thing the next session should pick up>
 
 ---
 
+## 2026-10-15 (overnight, unattended) — P1.3/P1.4 ported, parity gate, DugOut Lab on the phone
+Tickets: DUG-159 (also filed/updated DUG-161; deny rules commit 2328f22)
+Changed: on `native/phase-1-pipeline` only — `segment.js` → `SegmentMath`/`Segmenter` (P1.3) and
+`evaluate.js` → `Evaluator` (P1.4), constants copied as-is and marked PROVISIONAL (R-41);
+keyframe poses with Vision (no crop); the parity harness running the repo's unmodified JS in
+JavaScriptCore; `dugout-probe swings|parity`; the DugOut Lab test app (`ios/DugOutLab`, never
+ships — SKIP_INSTALL). An adversarial review (31 agents) found real defects; fixed test-first:
+AVAssetImageGenerator silently dropped ~9% of HEVC keyframes (now decoded in order, none
+missing); an all-zero "nobody" pose where the JS skips the frame; internal scores reachable via
+public Codable (R-02, now package-only); JS exceptions discarded by the harness; six small port
+bugs the tests could not catch (now caught, plus guard/caps); Lab Clear not cancelling, tmp
+copies left behind, no snapshot cover, AirPlay on, broken loop on 2/15 swings.
+CANON: R-42 gets the MoveNet-vs-Vision same-frame A/B (70/90 per-swing marks agree); R-43
+(per-swing marks, OPEN) rewritten with the quote fixed and two counter-cases; new R-44 (native
+reads every frame + Y luma, the web app ~1 in 4 + RGB luma — swing counts differ on 5/7 clips;
+OPEN, recommend re-measuring per-sample constants with R-41).
+Parity: 7 clips ALL IDENTICAL — swings 3/2/2/3/2/2/1, 90/90 graded marks, samples, peaks,
+tracks, capHit, round and focus. `swift test` with DUGOUT_CLIPS: 41 tests, 0 failures. Main
+DugOut app still builds (iOS 15). Lab installed on Derell's iPhone.
+State: committed + pushed to `native/phase-1-pipeline`. Not merged. `main` untouched.
+Next: Derell answers the morning-report questions on DUG-159 (R-43, R-44 first), then measure on
+the first 1080p60 cage clips before any constant moves.
+
+---
+
 ## 2026-10-14 (close) — Derell's answers recorded; no code
 Tickets: DUG-159, DUG-40
 Changed: `docs/CANON.md` R-41 → **CONFIRMED** (the original clips were Slo-mo) plus the new
