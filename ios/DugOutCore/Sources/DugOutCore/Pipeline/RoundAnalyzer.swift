@@ -38,40 +38,65 @@ public enum KeyframePoser {
     /// length — and so the same time base `u` — as the JS.
     static var nobody: Pose { Pose(keypoints: Pose.jointNames.map { Keypoint(name: $0, x: 0, y: 0, score: 0) }) }
 
-    static func pose(from cgImage: CGImage, size: (w: Double, h: Double)) throws -> Pose {
+    /// Which decoded frame stood in for each keyframe time (its presentation time), or nil when no
+    /// frame could be had. Internal: the tests check it; nothing displays it.
+    struct Sampled { var poses: [KeyframePose]; var sourcePTS: [Double?] }
+
+    /// Pose at each time, on the frame ON SCREEN at that moment: the last frame presented at or
+    /// before t — what segment.js got by seeking a <video>.
+    ///
+    /// The swing window is decoded IN ORDER with AVAssetReader. (AVAssetImageGenerator at zero
+    /// tolerance was used first and silently refused ~9% of keyframes on iPhone HEVC — the frames
+    /// just before each sync frame, error -11821 — which became "nobody" poses. Found 2026-10-15.)
+    static func sample(_ url: URL, info: VideoTrackInfo, times: [Double]) async throws -> Sampled {
+        guard !times.isEmpty else { return Sampled(poses: [], sourcePTS: []) }
+        let reader = try await FrameReader.open(url)
+        let size = keyframeSize(info)
+        let targets = times.map { max(0, min(info.duration, $0)) }             // seekTo clamps
+        let order = targets.indices.sorted { targets[$0] < targets[$1] }
+        var poses = [Pose?](repeating: nil, count: times.count)
+        var pts = [Double?](repeating: nil, count: times.count)
+        var next = 0                                     // next index into `order` still to assign
+        var prev: (frame: CVPixelBuffer, t: Double)?
+
+        /// Pose `frame` once and hand it to every pending target in `range` of `order`.
+        func assign(_ frame: CVPixelBuffer, at t: Double, upTo end: Int) throws {
+            guard next < end else { return }
+            let pose = try Self.pose(from: frame, orientation: info.orientation, size: size)
+            while next < end { poses[order[next]] = pose; pts[order[next]] = t; next += 1 }
+        }
+
+        // start a little early so the frame already on screen at the first target is decoded too
+        try reader.forEachFrame(from: max(0, targets[order[0]] - 1.0), upTo: targets[order[order.count - 1]] + 1.0) { t, frame in
+            // targets before this frame's time belong to the previous frame (or, before the very
+            // first frame, to this one — a seek before the first frame shows the first frame)
+            var end = next
+            while end < order.count && targets[order[end]] < t - 1e-9 { end += 1 }
+            if end > next { try assign(prev?.frame ?? frame, at: prev?.t ?? t, upTo: end) }
+            prev = (frame, t)
+        }
+        if let prev { try assign(prev.frame, at: prev.t, upTo: order.count) }   // the rest: the last frame
+        return Sampled(poses: times.indices.map { KeyframePose(t: times[$0], pose: poses[$0] ?? nobody) },
+                       sourcePTS: pts)
+    }
+
+    static func pose(from frame: CVPixelBuffer, orientation: CGImagePropertyOrientation,
+                     size: (w: Double, h: Double)) throws -> Pose {
         let request = VNDetectHumanBodyPoseRequest()
-        try VNImageRequestHandler(cgImage: cgImage, orientation: .up, options: [:]).perform([request])
+        try VNImageRequestHandler(cvPixelBuffer: frame, orientation: orientation, options: [:]).perform([request])
         guard let person = BodyPoseDetector.pickSubject(request.results ?? []),
               let points = try? person.recognizedPoints(.all) else { return nobody }
         return Pose(keypoints: names.map { vn, name in
             guard let p = points[vn], p.confidence > 0 else { return Keypoint(name: name, x: 0, y: 0, score: 0) }
-            // Vision: normalised, origin bottom-left. Keyframe pixels: origin top-left, y down.
+            // Vision: normalised to the upright picture, origin bottom-left. Keyframe pixels: y down.
             return Keypoint(name: name, x: Double(p.location.x) * size.w, y: (1 - Double(p.location.y)) * size.h,
                             score: Double(p.confidence))
         })
     }
 
-    /// Pose at each time, on the full-resolution upright frame shown at that moment.
-    public static func poses(asset: AVAsset, info: VideoTrackInfo, times: [Double]) async throws -> [KeyframePose] {
-        let generator = AVAssetImageGenerator(asset: asset)
-        generator.appliesPreferredTrackTransform = true          // upright, as the browser drew it
-        generator.requestedTimeToleranceBefore = .zero           // the exact frame on screen at t
-        generator.requestedTimeToleranceAfter = .zero
-        let size = keyframeSize(info)
-        var out: [KeyframePose] = []
-        for t in times {
-            let time = CMTime(seconds: max(0, min(info.duration, t)), preferredTimescale: 600)   // seekTo clamps
-            var image: CGImage?
-            if #available(iOS 16, macOS 13, *) {
-                image = try? await generator.image(at: time).image
-            } else {
-                image = try? generator.copyCGImage(at: time, actualTime: nil)
-            }
-            // A frame the generator cannot produce (e.g. inside an empty edit) is "nobody there".
-            let pose = try image.map { try Self.pose(from: $0, size: size) } ?? nobody
-            out.append(KeyframePose(t: t, pose: pose))
-        }
-        return out
+    /// Pose at each keyframe time (see `sample`).
+    public static func poses(_ url: URL, info: VideoTrackInfo, times: [Double]) async throws -> [KeyframePose] {
+        try await sample(url, info: info, times: times).poses
     }
 }
 
@@ -101,11 +126,10 @@ public enum RoundAnalyzer {
                                progress: ((_ stage: String, _ fraction: Double) -> Void)? = nil) async throws -> RoundResult {
         let library = try library ?? TipLibrary.bundled()
         let seg = try await Segmenter.segment(url) { progress?("Finding swings", $0 * 0.7) }
-        let asset = AVURLAsset(url: url)
         var swings: [AnalyzedSwing] = []
         for (i, span) in seg.swings.enumerated() {
             progress?("Reading swing \(i + 1) of \(seg.swings.count)", 0.7 + 0.3 * Double(i) / Double(max(1, seg.swings.count)))
-            let frames = try await KeyframePoser.poses(asset: asset, info: seg.info,
+            let frames = try await KeyframePoser.poses(url, info: seg.info,
                                                        times: KeyframePoser.times(for: span, duration: seg.durationSec))
             let analysis = Evaluator.analyzeSwing(frames: frames, contactT: span.contactT, library: library)
             swings.append(AnalyzedSwing(index: i, span: span, keyframes: frames, analysis: analysis,

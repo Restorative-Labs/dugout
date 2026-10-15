@@ -13,11 +13,12 @@ enum SyntheticClip {
                       width: Int = 160, height: Int = 90,
                       ticks: [Int64],
                       transform: CGAffineTransform = .identity,
+                      codec: AVVideoCodecType = .h264,
                       draw: ((_ frame: Int, _ pixels: UnsafeMutablePointer<UInt8>, _ width: Int, _ height: Int, _ rowBytes: Int) -> Void)? = nil) throws {
         try? FileManager.default.removeItem(at: url)
         let writer = try AVAssetWriter(outputURL: url, fileType: .mov)
         let input = AVAssetWriterInput(mediaType: .video, outputSettings: [
-            AVVideoCodecKey: AVVideoCodecType.h264,
+            AVVideoCodecKey: codec,
             AVVideoWidthKey: width,
             AVVideoHeightKey: height,
         ])

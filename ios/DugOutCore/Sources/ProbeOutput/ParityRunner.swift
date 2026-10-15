@@ -136,13 +136,12 @@ public enum ParityRunner {
         }
 
         // ---- evaluation: same Vision poses into both evaluators ----
-        let asset = AVURLAsset(url: url)
         var evals: [ClipParity.SwingEval] = []
         var nativeAnalyses: [IdentifiedAnalysis] = []
         var jsAnalyses: [Any] = []
         for (i, span) in seg.swings.enumerated() {
             progress?("swing \(i + 1)/\(seg.swings.count): Vision keyframe poses → both evaluators")
-            let frames = try await KeyframePoser.poses(asset: asset, info: seg.info,
+            let frames = try await KeyframePoser.poses(url, info: seg.info,
                                                        times: KeyframePoser.times(for: span, duration: seg.durationSec))
             let native = Evaluator.analyzeSwing(frames: frames, contactT: span.contactT, library: library)
             try js.set("__poses", json: try frames.map { f -> Any in try f.pose.map { try encode($0) } ?? NSNull() })
