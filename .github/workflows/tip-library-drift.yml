@@ -1,0 +1,37 @@
+# The native app's tip library (ios/DugOutCore/.../tip-library.json) must be byte-for-byte the
+# export of js/library.js (CANON R-06, DUG-160). This catches a hand edit of either file, or a
+# library.js regenerated without its export, on every push and pull request that touches them.
+#
+# Python standard library only — it needs no Mac, no Swift and no spreadsheet. The full Swift
+# test suite (TipLibraryTests) still runs locally with `swift test` in ios/DugOutCore.
+name: Tip library drift
+
+on:
+  push:
+    paths:
+      - "js/library.js"
+      - "ios/DugOutCore/Sources/DugOutCore/Resources/tip-library.json"
+      - "scripts/build_library.py"
+      - "scripts/export_library_json.swift"
+      - "scripts/check_library_json.py"
+      - ".github/workflows/tip-library-drift.yml"
+  pull_request:
+    paths:
+      - "js/library.js"
+      - "ios/DugOutCore/Sources/DugOutCore/Resources/tip-library.json"
+      - "scripts/build_library.py"
+      - "scripts/export_library_json.swift"
+      - "scripts/check_library_json.py"
+      - ".github/workflows/tip-library-drift.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: tip-library.json is byte-for-byte the export of js/library.js
+        run: python3 scripts/check_library_json.py

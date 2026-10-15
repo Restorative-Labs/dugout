@@ -77,8 +77,17 @@ Swift's `String ==` is canonical equivalence (a decomposed "≠" passed) and a d
 hid a rewrite from Swift's JSON readers. Fixed with a byte-for-byte test (bundled file == a fresh
 export), seen failing on both; strings now compare by UTF-8; the hard-coded 29 now reads the
 header's own count; the exporter refuses a non-object library. 17/17 green. **The guard is not
-automatic** — CANON R-06 now says so. **Rule for later:** every time `build_library.py` runs, run
-`swift scripts/export_library_json.swift` too — the test will fail until you do.
+automatic** — CANON R-06 now says so. **Then DUG-160 (branch `DUG-160-library-drift-guard`, off `native/phase-1-pipeline`): the guard is
+now automatic.** `build_library.py` checks for `swift` before writing anything, then writes
+`library.js`, runs the exporter and `scripts/check_library_json.py` — one command, and the two
+copies cannot be left disagreeing. The checker is stdlib Python (no Mac): it re-derives the export
+from `library.js` and compares bytes; caught 13 of 13 planted drifts (Unicode look-alikes, a
+duplicate key hiding a rewrite, minification, a stale export, shape traps), passed the untouched
+control. Proved against the **real trainer sheet** in a throwaway worktree: regeneration left
+`library.js` and the JSON byte-identical (the sheet has not changed since July 16); with no
+`swift` on PATH it stopped and wrote nothing; a failing check after writing says so loudly. A
+GitHub Actions job (*Tip library drift*, Python only, read-only) runs the check on every push/PR
+touching the files. CANON R-06 updated.
 
 ---
 

@@ -2,10 +2,18 @@
 
 The spreadsheet is the source of truth (DUG-37). This script is the only thing that
 should ever write library.js, so a corrected sheet can be re-converted verbatim.
+
+It also refreshes the native app's copy of the library in the same run (DUG-160):
+after writing library.js it runs scripts/export_library_json.swift, then
+scripts/check_library_json.py, so the two can never be left disagreeing. It checks
+that `swift` is available BEFORE writing anything, and fails loudly at every step.
 """
 import json
 import os
 import re
+import shutil
+import subprocess
+import sys
 from pathlib import Path
 
 import openpyxl
@@ -45,6 +53,19 @@ if SRC is None:
         f"Looked in:\n  {tried}\n"
         f"Set DUGOUT_ASSETS to the folder that contains 'Product & Specs'."
     )
+
+# The native export needs Swift (Xcode). Check now, before anything is written: a run that
+# updated library.js but not the native JSON would leave the web and the app disagreeing.
+EXPORTER = REPO / "scripts" / "export_library_json.swift"
+CHECKER = REPO / "scripts" / "check_library_json.py"
+if shutil.which("swift") is None:
+    raise SystemExit(
+        "`swift` was not found, so the native tip library (DugOutCore) could not be refreshed.\n"
+        "Nothing was written. Install Xcode (or its command-line tools) and run this again."
+    )
+for needed in (EXPORTER, CHECKER):
+    if not needed.is_file():
+        raise SystemExit(f"Missing {needed}. Nothing was written.")
 
 CHECKPOINT_KEY = {
     "Stance": "stance",
@@ -321,3 +342,13 @@ print("toggles: %s" % [t["id"] for t in tips if t["isToggle"]])
 print("weighted drills: %s" % sorted({t["id"] for t in tips for d in t["drills"] if d["weighted"]}))
 print("deprecated cues: %s" % deprecated)
 print("wrote %s (%d bytes)" % (OUT, os.path.getsize(OUT)))
+
+# ---- native app copy (DUG-160): export, then prove it is byte-for-byte the export ----
+sys.stdout.flush()   # print the report above before the child processes write theirs
+for step in ([shutil.which("swift"), str(EXPORTER)], [sys.executable, str(CHECKER)]):
+    result = subprocess.run(step, cwd=REPO)
+    if result.returncode != 0:
+        raise SystemExit(
+            "\nlibrary.js WAS written, but the native tip library is NOT in sync with it "
+            "(step failed: %s).\nFix the error above and run this script again." % Path(step[-1]).name
+        )
