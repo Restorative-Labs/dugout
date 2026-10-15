@@ -15,6 +15,54 @@ Next: <the one thing the next session should pick up>
 
 ---
 
+## 2026-10-14 — Film tab fix (DUG-40), then native Phase 1: real timestamps and Vision pose
+Tickets: DUG-40, DUG-156 (not started), DUG-158 (epic, filed), DUG-159 (filed)
+Changed: **Branch `DUG-40-film-controls`** (`643c364`, pushed, off `DUG-106-bundle-id`):
+the checkpoint chips get their own row above the transport; scrub / step-play-step / speed rows
+≥ 44pt; the swing bar moves above the stage; the right rail wraps on short screens; the frame is
+capped to the stage height. Verified headless at 320×568, 375×667, 440×956 (zero overlaps); the
+original layout reproduced the bug exactly. Installed on Derell's phone — **device check not
+yet reported**. **Branch `native/phase-1-pipeline`** (off `main` `f79bce0`): `ios/DugOutCore`
+Swift package (library + `ProbeOutput` test-only target + `dugout-probe` CLI + 11 tests),
+linked to `ios/DugOut.xcodeproj`; `docs/CANON.md` R-40/R-41/R-42; `docs/NATIVE-P1.md`
+committed with an "As built" appendix. Nothing in `js/` touched.
+State: committed+pushed on both branches; neither merged. `DUG-106-bundle-id` still unmerged.
+Left untouched and uncommitted: `design/canvas/*.py` (another session's DUG-157 edits).
+Next: **Derell confirms the regression clips were filmed in Slo-mo (R-41)** and films one
+normal-speed swing — every time constant P1.3 transfers from `config.js` depends on the answer.
+
+**Native ruled today (R-40).** Tonight was P1.1 + P1.2 only — no UI, no segment/evaluate port.
+Tests written first and seen failing (DUG-92), twice: the first slice, and the fixes below.
+
+**P1.1 — the timeline is trustworthy, with one trap.** Monotonic on every clip. `Three Swings`
+is H.264 1280×720, 2,485 frames, every gap 33.333 ms. The pitch clips are HEVC 1920×1080 and open
+with an **iPhone empty edit (0.188–0.204 s)** for which AVAssetReader emits one **all-black frame
+at t=0** with no marker — it would have been fed to Vision and, in P1.3, to motion sampling.
+Now skipped and counted. The 133 ms gap before `pitch_01`'s last frame is real (in the file).
+
+**P1.2 — Vision sees the wrists (R-42).** Person found in 100% of camera frames on all 7 clips;
+wrist medians 0.76–0.83, elbows 0.80–0.85, no crop. But at contact the far-side arm drops —
+`Three Swings` @31.58 s left elbow 0.184. Fair claim: at least as good as the two-pass MoveNet
+the app ships, clearly better than single-pass; **not** "0.8 vs 0.3", because the scales differ
+and the 0.3 is 8 values from an unnamed clip whose probe code was never kept.
+
+**The finding that matters most (R-41).** The verification pass found the regression clips are
+**~8× slow-motion exports** (Apple's slo-mo flag on `Three Swings`; audio band-limited to
+~2.7 kHz). Every timestamp, every "swing lasts 0.1–0.2 s", every `*_SEC` constant and the
+per-frame spike threshold were measured in playback time on slowed footage. Nothing in the repo
+said so. ~7% of frames are also near-repeats behind perfectly even timestamps.
+
+**How it was checked.** A 29-agent adversarial verification: independent recompute of all 132
+table cells from the CSVs (0 hard mismatches), orientation proved on synthetic clips, keypoint
+plausibility without viewing a frame, MoveNet comparability, compliance. Its upheld defects were
+fixed test-first: the black filler frame; the keypoint CSV writer compiled into the shipped app
+(moved to `ProbeOutput` — 0 symbols in the Release binary now); CSV precision; a repo guard that a
+symlink or case-variant path could bypass (now also refuses cloud-synced folders); real-clip
+tests that skipped green when `DUGOUT_CLIPS` was wrong. Pose CSVs (biometric) live only in the
+session scratchpad, never in the repo.
+
+---
+
 ## 2026-10-08 — main fast-forwarded to the rescue branch; Pages unfrozen
 Tickets: DUG-34, DUG-38 (the swing-gate fix reaches Pages); R-37, R-38, R-39 committed
 Changed: `2ea48c4` on `rescue/jul-field-tuning` — `docs/CANON.md` (R-37 through R-39),
