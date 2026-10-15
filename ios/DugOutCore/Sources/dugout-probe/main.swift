@@ -11,6 +11,14 @@
 //       window around each contact. --at prints wrist/elbow confidence at the frame nearest
 //       each time (a confidence, never a position).
 //
+//   dugout-probe swings <clip.mov> [--age-band 11-13]
+//       P1.3+P1.4: the whole native pipeline — swings found, and for each swing the six
+//       checkpoint marks (PASS / FAIL / — for not measured), plus the round's marks and focus.
+//
+//   dugout-probe parity <clip.mov> [more clips…] [--json <out.json>]
+//       The gate: Swift vs the app's own JS (in JavaScriptCore) on the same decoded frames and
+//       the same Vision poses. Prints a table; never prints an internal score.
+//
 // The CSV holds pose keypoints of a real child (biometric, CANON R-13/R-30). It is refused
 // anywhere inside a git working tree or a cloud-synced folder. Nothing printed here is ever a
 // keypoint position.
@@ -70,8 +78,8 @@ func describe(_ o: CGImagePropertyOrientation) -> String {
 }
 
 let args = Array(CommandLine.arguments.dropFirst())
-guard args.count >= 2, ["timeline", "pose"].contains(args[0]) else {
-    fail("usage: dugout-probe timeline <clip> [--timestamps]\n       dugout-probe pose <clip> --csv <out.csv> [--contacts a,b] [--window 0.5] [--at t1,t2]")
+guard args.count >= 2, ["timeline", "pose", "swings", "parity"].contains(args[0]) else {
+    fail("usage: dugout-probe timeline <clip> [--timestamps]\n       dugout-probe pose <clip> --csv <out.csv> [--contacts a,b] [--window 0.5] [--at t1,t2]\n       dugout-probe swings <clip> [--age-band 11-13]\n       dugout-probe parity <clip> [clip…] [--json out.json]")
 }
 let url = URL(fileURLWithPath: args[1])
 guard FileManager.default.fileExists(atPath: url.path) else { fail("No such file: \(url.path)") }
@@ -188,6 +196,51 @@ case "pose":
             guard let fr = run.frames.min(by: { abs($0.t - t) < abs($1.t - t) }) else { continue }
             print("  t=\(f(t, 2))  (frame \(f(fr.t, 3)) s)  wrist \(f(fr.confidence(.leftWrist), 2)) / \(f(fr.confidence(.rightWrist), 2)) · elbow \(f(fr.confidence(.leftElbow), 2)) / \(f(fr.confidence(.rightElbow), 2))")
         }
+    }
+
+case "swings":
+    let band = option("--age-band", in: args) ?? "11-13"
+    let r = try await RoundAnalyzer.analyze(url, ageBand: band)
+    header(r.segmentation.info)
+    let seg = r.segmentation
+    print("swings       \(r.swings.count)\(seg.capHit.map { "  (cap hit: \($0))" } ?? "")  · motion samples \(seg.sampleCount) · audio peaks \(seg.audioPeakCount) · ball tracks \(seg.ballSaturated ? "saturated → ignored" : String(seg.ballTrackCount))")
+    func mark(_ m: CheckpointMark?) -> String { guard let m else { return "?" }; return m.assessed ? (m.pass ? "PASS" : "FAIL") : "—" }
+    print("\n#  window (s)        contact  audio  " + Tuning.checkpoints.map { Tuning.checkpointLabel[$0]!.padding(toLength: 10, withPad: " ", startingAt: 0) }.joined())
+    for s in r.swings {
+        let w = "\(f(s.span.start, 2))–\(f(s.span.end, 2))".padding(toLength: 18, withPad: " ", startingAt: 0)
+        var line = "\(s.index + 1)  \(w)\(f(s.span.contactT, 2).padding(toLength: 9, withPad: " ", startingAt: 0))\((s.span.audioConfirmed ? "yes" : "no").padding(toLength: 7, withPad: " ", startingAt: 0))"
+        line += s.analysis.ok ? Tuning.checkpoints.map { mark(s.marks[$0]).padding(toLength: 10, withPad: " ", startingAt: 0) }.joined()
+                              : "not analysed (\(s.analysis.reason ?? "?"))"
+        print(line)
+    }
+    print("round        " + Tuning.checkpoints.map { "\(Tuning.checkpointLabel[$0]!) \(mark(r.roundMarks[$0]))" }.joined(separator: " · "))
+    let graded = r.roundMarks.values.contains { $0.assessed }
+    print("focus        \(r.focus.map { Tuning.checkpointLabel[$0]! } ?? (graded ? "none — every graded checkpoint passed" : "NOTHING COULD BE GRADED"))")
+
+case "parity":
+    let clips = args.dropFirst().filter { !$0.hasPrefix("--") && $0 != option("--json", in: args) }.map { URL(fileURLWithPath: $0) }
+    var reports: [ClipParity] = []
+    for clip in clips {
+        FileHandle.standardError.write("\(clip.lastPathComponent)…\n".data(using: .utf8)!)
+        reports.append(try await ParityRunner.run(clip) { FileHandle.standardError.write("  \($0)\n".data(using: .utf8)!) })
+    }
+    print("clip               JS swings  native swings  segmentation      checkpoint matches   round")
+    for r in reports {
+        let seg = r.segmentationIdentical ? "identical" : "DIFFERS at \(r.segmentationDiffAt ?? "?")"
+        print(r.clip.padding(toLength: 19, withPad: " ", startingAt: 0)
+              + "\(r.js.swings.count)".padding(toLength: 11, withPad: " ", startingAt: 0)
+              + "\(r.native.swings.count)".padding(toLength: 15, withPad: " ", startingAt: 0)
+              + seg.padding(toLength: 18, withPad: " ", startingAt: 0)
+              + "\(r.checkpointMatches)/\(r.checkpointTotal)".padding(toLength: 21, withPad: " ", startingAt: 0)
+              + (r.roundIdentical ? "identical" : "DIFFERS"))
+        for s in r.swings where !s.analysisIdentical {
+            print("   swing \(s.index + 1): analysis differs at \(s.analysisDiffAt ?? "?")")
+        }
+    }
+    if let out = option("--json", in: args) {
+        let enc = JSONEncoder(); enc.outputFormatting = [.prettyPrinted, .sortedKeys]
+        try enc.encode(reports).write(to: URL(fileURLWithPath: out))
+        print("json         \(out)")
     }
 
 default:

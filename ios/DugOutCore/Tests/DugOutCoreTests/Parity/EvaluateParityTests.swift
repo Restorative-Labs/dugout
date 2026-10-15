@@ -1,5 +1,6 @@
 import XCTest
 @testable import DugOutCore
+@testable import ProbeOutput
 
 /// P1.4 parity: js/evaluate.js vs the Swift port on IDENTICAL pose tracks. The JS side runs its
 /// real analyzeSwing (buildTrack's sampling, orient, all fifteen detectors, the try/catch), with

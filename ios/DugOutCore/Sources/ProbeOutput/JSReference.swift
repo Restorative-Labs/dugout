@@ -1,6 +1,5 @@
 import Foundation
 import JavaScriptCore
-import XCTest
 
 /// The JavaScript pipeline, running for real inside JavaScriptCore — the reference the Swift port
 /// is held to (P1.3 / P1.4 parity).
@@ -14,23 +13,22 @@ import XCTest
 ///      geom, orient, …) can be called directly. The exact export line is asserted first — if it
 ///      ever changes in the JS, this throws instead of quietly testing something else.
 /// console.* is a no-op: CFG.DEBUG would otherwise print detector confidences (R-13).
-final class JSReference {
-    let ctx: JSContext
-    private(set) var jsError: String?
+public final class JSReference {
+    public let ctx: JSContext
+    public private(set) var jsError: String?
 
-    static var repoRoot: URL {
+    public static var repoRoot: URL {
         URL(fileURLWithPath: #filePath)
-            .deletingLastPathComponent()   // Parity
-            .deletingLastPathComponent()   // DugOutCoreTests
-            .deletingLastPathComponent()   // Tests
+            .deletingLastPathComponent()   // Sources/ProbeOutput
+            .deletingLastPathComponent()   // Sources
             .deletingLastPathComponent()   // ios/DugOutCore
             .deletingLastPathComponent()   // ios
             .deletingLastPathComponent()   // repo root
     }
 
-    struct LoadError: Error, CustomStringConvertible { let description: String }
+    public struct LoadError: Error, CustomStringConvertible { public let description: String }
 
-    init() throws {
+    public init() throws {
         guard let ctx = JSContext() else { throw LoadError(description: "no JSContext") }
         self.ctx = ctx
         ctx.exceptionHandler = { [weak self] _, e in self?.jsError = e?.toString() }
@@ -69,7 +67,7 @@ final class JSReference {
 
     /// Evaluate and return JSON-decoded Foundation value. Async functions: pass an expression that
     /// produces a Promise; it is awaited (JSContext drains microtasks before evaluateScript returns).
-    func json(_ expression: String) throws -> Any {
+    public func json(_ expression: String) throws -> Any {
         jsError = nil
         ctx.evaluateScript("""
             window.__out = undefined; window.__err = undefined;
@@ -89,7 +87,7 @@ final class JSReference {
     }
 
     /// Put a Swift value into the JS global scope (via JSON — exact for doubles, ints, strings).
-    func set(_ name: String, json value: Any) throws {
+    public func set(_ name: String, json value: Any) throws {
         let data = try JSONSerialization.data(withJSONObject: value, options: [.fragmentsAllowed])
         let text = String(decoding: data, as: UTF8.self)
         jsError = nil
@@ -98,11 +96,11 @@ final class JSReference {
     }
 
     /// A large buffer as a JS typed array, handed over without JSON (frames are 130k pixels).
-    func setBytes(_ name: String, _ bytes: [UInt8]) {
+    public func setBytes(_ name: String, _ bytes: [UInt8]) {
         setTyped(name, kJSTypedArrayTypeUint8Array, bytes.withUnsafeBytes { Data($0) })
     }
 
-    func setFloat32(_ name: String, _ values: [Float]) {
+    public func setFloat32(_ name: String, _ values: [Float]) {
         setTyped(name, kJSTypedArrayTypeFloat32Array, values.withUnsafeBytes { Data($0) })
     }
 

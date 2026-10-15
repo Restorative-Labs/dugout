@@ -1,5 +1,6 @@
 import XCTest
 @testable import DugOutCore
+@testable import ProbeOutput
 
 /// P1.3 parity: every piece of js/segment.js, Swift vs the real JS, on IDENTICAL inputs.
 /// Identical inputs is the point — this proves the port, separately from any difference in how
