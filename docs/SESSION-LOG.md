@@ -15,6 +15,36 @@ Next: <the one thing the next session should pick up>
 
 ---
 
+## 2026-10-14 (close) — Derell's answers recorded; no code
+Tickets: DUG-159, DUG-40
+Changed: `docs/CANON.md` R-41 → **CONFIRMED** (the original clips were Slo-mo) plus the new
+footage rule; R-42 gains the lead-arm answer. Jira: DUG-159 note on CT-05/CT-06; DUG-40 device pass recorded
+(it was already in QA — left there for the full checklist). Nothing else.
+State: committed+pushed on `native/phase-1-pipeline`. Unmerged branches: `DUG-40-film-controls`,
+`DUG-106-bundle-id`, `native/phase-1-pipeline`, `DUG-160-library-drift-guard` (built on native;
+merge native into it, or it into native, before either reaches `main`). Still uncommitted and
+untouched: `design/canvas/*.py` (another session's DUG-157 edits).
+Next: **measure the 2026-10-15 cage clips (1080p, 60 fps, normal Video)** with
+`dugout-probe timeline` and `pose` — the first footage on a real time base. P1.3 does not
+start until those numbers exist.
+
+**Answers (Derell):** the original test clips were filmed in Slo-mo — R-41 confirmed, so every
+time constant in `config.js` was tuned on playback time. New test footage is normal Video,
+1080p at 60 fps, no more Slo-mo; first clips Oct 15 from the cage. DJ is right-handed and the
+arm that drops at contact is his lead arm. Fix 1 (DUG-40) passed on his phone, checked live;
+back in QA for the full checklist.
+
+**What the lead-arm answer means (checked in `evaluate.js`, measured on the CSVs):** CT-05 and
+CT-06 read only the rear elbow and wrist, and DJ's rear pair clears the 0.3 gate in 15/15 frames
+at all five contacts — they do not depend on the dropout. But FN-03 (finish height) averages both
+wrists and `mid()` silently falls back to one, so when the lead wrist drops, FN-03 still renders a
+mark measured on the rear wrist alone. Caveats: holds for a right-handed hitter filmed from this
+side, and only if `orient()` names the front foot right (ankles not yet measured under Vision).
+60 fps normal video will also carry more motion blur per frame than 240 fps slo-mo — expect contact
+confidence to fall, and re-measure before trusting any of tonight's numbers on the new footage.
+
+---
+
 ## 2026-10-14 — Film tab fix (DUG-40), then native Phase 1: real timestamps and Vision pose
 Tickets: DUG-40, DUG-156 (not started), DUG-158 (epic, filed), DUG-159 (filed)
 Changed: **Branch `DUG-40-film-controls`** (`643c364`, pushed, off `DUG-106-bundle-id`):
