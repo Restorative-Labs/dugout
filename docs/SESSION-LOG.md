@@ -61,6 +61,25 @@ symlink or case-variant path could bypass (now also refuses cloud-synced folders
 tests that skipped green when `DUGOUT_CLIPS` was wrong. Pose CSVs (biometric) live only in the
 session scratchpad, never in the repo.
 
+**Later slice — the tip library as bundled data (DUG-159).** `js/library.js` exported to
+`ios/DugOutCore/Sources/DugOutCore/Resources/tip-library.json` by the new
+`scripts/export_library_json.swift` (JavaScriptCore evaluates the JS literal; `JSON.stringify`
+writes it). All five sections, not just tips: 29 tips, 12 glossary entries, 4 school presets,
+12 engine rules and the 3 red-line `deprecatedCues`. `TipLibrary.swift` loads it into typed
+structs via `Bundle.module`. `TipLibraryTests` (written first, seen failing 10 ways against an
+empty placeholder) re-evaluates `library.js` on every run and compares strictly — a boolean never
+equals 1 — and proves the structs model every field. Mutation-tested: a doubled space in ST-01, a
+`true`→`1`, and a dropped deprecated cue were each caught and named by tip and field. The app
+bundles the JSON byte-identical. `library.js` read only, never changed. CANON R-06 amended with
+the export chain. A 2-agent check then proved the JSON equal to `library.js` with no
+JavaScriptCore (0 of 739 strings differ, at the UTF-8 byte level) but broke the first guard:
+Swift's `String ==` is canonical equivalence (a decomposed "≠" passed) and a duplicated `tip` key
+hid a rewrite from Swift's JSON readers. Fixed with a byte-for-byte test (bundled file == a fresh
+export), seen failing on both; strings now compare by UTF-8; the hard-coded 29 now reads the
+header's own count; the exporter refuses a non-object library. 17/17 green. **The guard is not
+automatic** — CANON R-06 now says so. **Rule for later:** every time `build_library.py` runs, run
+`swift scripts/export_library_json.swift` too — the test will fail until you do.
+
 ---
 
 ## 2026-10-08 — main fast-forwarded to the rescue branch; Pages unfrozen

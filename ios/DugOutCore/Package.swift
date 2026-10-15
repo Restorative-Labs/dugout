@@ -25,7 +25,8 @@ let package = Package(
         .executable(name: "dugout-probe", targets: ["dugout-probe"]),
     ],
     targets: [
-        .target(name: "DugOutCore"),
+        // The tip library ships as data, not code: an exact export of js/library.js.
+        .target(name: "DugOutCore", resources: [.copy("Resources/tip-library.json")]),
         // Test-only output (the per-frame pose CSV). Deliberately NOT a product: the app links the
         // DugOutCore library alone, so code that writes keypoints to disk never ships in it.
         .target(name: "ProbeOutput", dependencies: ["DugOutCore"]),
