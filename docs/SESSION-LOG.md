@@ -15,6 +15,63 @@ Next: <the one thing the next session should pick up>
 
 ---
 
+## 2026-10-20 — DUG-63: one command sends a build to TestFlight; first build is out
+Tickets: DUG-63 (with DUG-96, DUG-97, DUG-44), DUG-165 (fixed), DUG-166 (filed), DUG-106 (base)
+Changed: on `DUG-63-testflight-lane` (built on `DUG-106-bundle-id`, so it builds
+`com.restorativelabs.dugout-ios`): `ios/fastlane/Fastfile` (`cd ios && fastlane beta`),
+`scripts/ship_checks.py` + `scripts/test_ship_checks.py` (79 planted cases), `.gitignore` /
+`ios/.gitignore` (build output, credentials), `ios/README-IOS.md`, `CLAUDE.md` (invariant 2 now
+names its enforcement), and DUG-165's UIScene move (`SceneDelegate.swift`, `AppDelegate.swift`,
+`Info.plist`, `project.pbxproj`). CANON: R-07 enforcement, **R-45** (ruled and enforced), **R-46** (open).
+Outside the repo: `~/.appstoreconnect/dugout.env` (Key ID, Issuer ID; mode 600, untracked). Apple
+side: the API key created the App Store profile "com.restorativelabs.dugout-ios AppStore".
+State: committed + pushed on `DUG-63-testflight-lane`. Not merged; `main` untouched. The main
+checkout (on `native/phase-1-pipeline`) still has another session's uncommitted
+`design/canvas/render_check.py` and `screens.py` (2 files, +109/−28) — not this session's, not touched.
+Next: Derell opens **Dugout: Next Rep 1.0 (4)** from TestFlight on his iPhone and confirms the web
+app shows — that closes DUG-165's last open point. Then rule R-46 and the merge order (DUG-106, then DUG-63).
+
+**Result.** One run on a clean checkout of `8aa614d` took 4½ minutes, with no hand step and no
+Apple ID sign-in: build number 4 (one above TestFlight's 0 and the project's 3), archive, export
+signed by the LLC's Apple Distribution certificate, checks on the source and on the `.ipa`,
+upload, processing, and **IN_BETA_TESTING** for the internal group "DugOut testers".
+`ITSAppUsesNonExemptEncryption = NO` was already in Info.plist (2026-09-08) and is now verified in
+every `.ipa`. Planted outside addresses stop the real command at the first check, before any call
+to Apple: CDN `<script>` in `index.html` → `FAIL [DUG-96] index.html:44`; the start URL changed in
+`ViewController.swift` → `FAIL [DUG-96] … ViewController.swift:56`. A tampered copy of the real
+`.ipa` fails the after-build check. Evidence is posted on DUG-63.
+
+**Found on the way:**
+- **DUG-165.** Built with Xcode 27, the app quit at launch on iOS 27.0.1: devicectl launched it while
+  the phone was unlocked, then "The app terminated with the exit code 0". With the UIScene life cycle
+  the same build stayed up (still running after 20 s). It is fixed on the branch and in build 4.
+- **Xcode's automatic export wanted cloud-managed signing**, which the App Manager key may not use.
+  The lane signs by hand with the local distribution certificate and a profile fetched by API key.
+- **Two adversarial review rounds (7 reviewers) before the first upload.** They caught:
+  - a mistyped `dry_run` that would have uploaded for real;
+  - git-ignored files inside `js/` that would have shipped with every check green;
+  - the vendored pose detector's silent fallback to tfhub.dev;
+  - dry runs that wrote to Apple;
+  - "success" printed for builds testers could not install.
+  
+  All of them are fixed, and each has a test that fails on the previous code.
+- **DUG-166 (predates this work, filed only):** the loopback server's port fallback never worked. If
+  8384 is taken, DugOut shows the other server's page, with the camera granted. A tested fix is on the
+  ticket. Recommend fixing it before any tester outside the team.
+
+**Unproven, and what would settle it:**
+- **The web view renders in build 4.** Only "the process stays up" was measured. Settled when Derell
+  opens it from TestFlight and the welcome screen appears.
+- **The launch failure's cause.** The repeat of the old build was blocked because the phone had
+  locked. The A/B is one launch each way. Settled if the TestFlight build opens; a clean repeat of the
+  old build exiting with code 0 on an unlocked phone would confirm the cause.
+- **Unattended runs.** The keychain prompt for codesign appeared once (09:45, answered "Allow", not
+  "Always Allow") and did not appear on later runs. A run with nobody at the Mac has not been tried.
+- **Two runs at once.** Two simultaneous runs would pick the same build number. The second upload
+  should be rejected by Apple; not tried.
+
+---
+
 ## 2026-10-08 — main fast-forwarded to the rescue branch; Pages unfrozen
 Tickets: DUG-34, DUG-38 (the swing-gate fix reaches Pages); R-37, R-38, R-39 committed
 Changed: `2ea48c4` on `rescue/jul-field-tuning` — `docs/CANON.md` (R-37 through R-39),
