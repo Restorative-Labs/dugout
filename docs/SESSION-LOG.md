@@ -15,6 +15,31 @@ Next: <the one thing the next session should pick up>
 
 ---
 
+## 2026-10-20 (afternoon) — rulings, one CANON, build 5, and the launch date
+Tickets: DUG-153, DUG-164, DUG-63, DUG-165, DUG-166; board re-cut (NATIVE-REBUILD-PLAN §5.4) now unblocked
+Changed: CANON on this branch (`cb9b793`, `8384c15`) — R-44 RULED (b); R-45/R-46 copied word for word from
+the DUG-63/DUG-153 stack; the other (Cowork) session's R-47–R-51 and `docs/NATIVE-REBUILD-PLAN.md`
+committed with Derell's OK; R-16 retired for R-26 + a 7-day free trial; R-38 US only; R-43 round marks
+only; R-48 no sign-in at v1; new R-52 (legal on Claude's draft + Derell's sign-off), R-53 (Terms = Apple
+EULA, text in-app), R-54 (no family pilot before launch), R-55 (telemetry passes R-45 by a one-host
+allowlist). DUG-153 on `DUG-153-debug-off` (PR #4, stacked on #3 and #2): DEBUG off + a ship check;
+**TestFlight 1.0 (5)** uploaded and IN_BETA_TESTING (build 4 had debug on — my miss in the DUG-63 checks).
+State: committed + pushed on `native/phase-1-pipeline`, `DUG-63-testflight-lane`, `DUG-153-debug-off`.
+PRs #2 → #3 → #4 open, not merged; `main` untouched. Uncommitted and not this session's:
+`docs/NATIVE-P1.md` (other session, telemetry §9), `design/canvas/*` (DUG-157 session).
+Next: Derell opens build 1.0 (5) (closes DUG-165's last point) and films the first 1080p60 cage batch;
+then the Jira re-cut against R-47 and the merges #2 → #3 → #4 plus this branch's docs.
+
+**Launch date (internal, not publishable).** Monte Carlo on the estimators' model, 20,000 runs:
+21 artboards + correction + telemetry, with both levers (film this weekend; StoreKit alongside the
+screens) → P50 **~Feb 2 2027**, P90 ~Feb 25, live in 2026 ~2%; without the levers → P50 ~Feb 12, P90 ~Mar 7.
+At ~9 screens it was P50 ~Jan 1. The screens, not the swing reader, set the date. "Sell in 2026" (R-24)
+is effectively off at this scope — loosening it is Derell's call, not yet made.
+**Unproven:** every capture/screen/telemetry duration (nothing like them exists in Swift to measure);
+Apple's 2026 holiday slowdown; whether App Review accepts in-app Terms text (R-53).
+
+---
+
 ## 2026-10-15 (overnight, unattended) — P1.3/P1.4 ported, parity gate, DugOut Lab on the phone
 Tickets: DUG-159 (also filed/updated DUG-161; deny rules commit 2328f22)
 Changed: on `native/phase-1-pipeline` only — `segment.js` → `SegmentMath`/`Segmenter` (P1.3) and
