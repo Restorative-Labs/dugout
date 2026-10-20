@@ -418,6 +418,24 @@ class ShipChecks(unittest.TestCase):
         self.edit("js/app.js", "(function", "const U = 'https:\\/\\/cdn.example.com\\/a.js';\n(function")
         self.assert_fails("DUG-96", "cdn.example.com")
 
+    # ---------------------------------------------------------------- DUG-153: debug is off
+
+    def test_debug_on_stops_the_build(self) -> None:
+        self.edit("js/config.js", "DEBUG: false", "DEBUG: true")
+        self.assert_fails("DUG-153", "DEBUG must be exactly false")
+
+    def test_debug_setting_missing_stops_the_build(self) -> None:
+        self.edit("js/config.js", "DEBUG: false", "VERBOSE: false")
+        self.assert_fails("DUG-153", "no DEBUG setting")
+
+    def test_debug_truthy_value_stops_the_build(self) -> None:
+        self.edit("js/config.js", "DEBUG: false", "DEBUG: 1")
+        self.assert_fails("DUG-153", "found: 1")
+
+    def test_debug_on_inside_the_ipa(self) -> None:
+        ipa = self.make_ipa(tamper=lambda n, d: d.replace(b"DEBUG: false", b"DEBUG: true") if n == "js/config.js" else d)
+        self.assert_fails("DUG-153", "DEBUG must be exactly false", *self.ipa_args(ipa))
+
     # ---------------------------------------------------------------- the .ipa: what actually ships
 
     def test_clean_ipa_passes(self) -> None:

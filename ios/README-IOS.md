@@ -78,7 +78,7 @@ the lane — a typo can never upload.
 - **The build stops** if `scripts/ship_checks.py` finds an outside address in the app's entry point
   — the Swift it compiles, its Info.plist, the strings in its executable, or `index.html` — or in a
   stylesheet, our own scripts or the pose model's location (DUG-96); SharePoint marks in a shipped
-  file (DUG-97); or anything but the commit's web files, untouched, inside the app, including any
+  file (DUG-97); `DEBUG` on in `js/config.js` (DUG-153); or anything but the commit's web files, untouched, inside the app, including any
   credential-like file or pasted key (DUG-44: the web app ships inside the app; no over-the-air
   updates). It runs on the source before the archive and on the `.ipa` after; on a real run the
   `.ipa` is compared with the commit itself. `python3 -I scripts/test_ship_checks.py` plants each

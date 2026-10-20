@@ -31,6 +31,8 @@ What fails the build:
       secret-like content (API key, private key) may be in the app, and in the .ipa every shipped
       file is byte-identical to the commit's (--commit) or, for a dry run, the working tree's.
       Nothing is transformed; nothing comes over the air.
+  DUG-153  Debug is off: js/config.js must say DEBUG: false. On, it logs detector confidences —
+      internal scores, which are never logged (R-13) — and prints diagnostics on the round card.
   Packaging  the .ipa's bundle id and build number are the ones the lane asked for, and
       ITSAppUsesNonExemptEncryption is NO (so App Store Connect asks nothing by hand).
 
@@ -87,6 +89,7 @@ TITLE_RE = re.compile(r"<title\b[^>]*>(.*?)</title\s*>", re.IGNORECASE | re.DOTA
 ASSET_RE = re.compile(r"""<(script|link)\b[^>]*?\b(src|href)\s*=\s*["']([^"']+)["']""", re.IGNORECASE)
 INVISIBLE = " ​‌‍⁠﻿"
 MODEL_URL_RE = re.compile(r"""\bMODEL_URL\s*:\s*(["'])(.*?)\1""")
+DEBUG_RE = re.compile(r"^\s*DEBUG\s*:\s*([^,\s/]+)", re.MULTILINE)
 NATIVE_FORBIDDEN_APIS = ["URLSession", "NSURLConnection", "WKDownload", "URLComponents", "loadFileURL",
                          "loadHTMLString", "load(_ data", "loadSimulatedRequest"]
 
@@ -285,6 +288,21 @@ def check_scripts(files: dict[str, bytes], rep: Report, where: str) -> None:
                                               "would fetch its model from the internet")
 
 
+# ---------------------------------------------------------------- DUG-153: debug is off
+
+def check_debug_off(files: dict[str, bytes], rep: Report, where: str) -> None:
+    cfg = files.get(CONFIG_JS)
+    if cfg is None:
+        rep.fail("DUG-153", where + CONFIG_JS, "missing — cannot tell whether debug is off")
+        return
+    text = decode(cfg)
+    values = DEBUG_RE.findall(text)
+    if values != ["false"]:
+        found = ", ".join(values) if values else "no DEBUG setting"
+        rep.fail("DUG-153", where + CONFIG_JS, f"DEBUG must be exactly false in a build that leaves the Mac (found: {found}) — "
+                                              "on, it logs detector confidences (R-13)")
+
+
 # ---------------------------------------------------------------- DUG-97: SharePoint marks
 
 def check_sharepoint(files: dict[str, bytes], rep: Report, where: str) -> None:
@@ -415,6 +433,7 @@ def run_source(repo: Path) -> Report:
         check_web_entry(decode(files[ENTRY]), ENTRY, lambda r: r in files, rep)
     check_stylesheets(files, rep, "")
     check_scripts(files, rep, "")
+    check_debug_off(files, rep, "")
     native = {p.relative_to(repo).as_posix(): p.read_bytes() for d in NATIVE_DIRS for p in sorted((repo / d).rglob("*"))
               if p.is_file() and p.suffix in (".swift", ".plist", ".strings")}
     check_sharepoint({**files, **native}, rep, "")
@@ -458,6 +477,7 @@ def run_ipa(repo: Path, ipa: Path, bundle_id: str, build: str, commit: str | Non
                 rep.fail("DUG-96", f"{where}{name}:{line_of(clean, off)}", f"outside address in a page the server serves: {snippet}")
     check_stylesheets(shipped, rep, where)
     check_scripts(shipped, rep, where)
+    check_debug_off(shipped, rep, where)
     check_sharepoint({n: d for n, d in shipped.items() if n != "Info.plist"}, rep, where)
     check_secrets(shipped, rep, where)
     check_binaries(shipped, rep, where)
@@ -499,7 +519,7 @@ def main(argv: list[str]) -> int:
     if rep.failures:
         print(f"ship checks FAILED on {label}: {len(rep.failures)} finding(s) — the build stops here.")
         return 1
-    print(f"ship checks passed on {label}: entry point is local (DUG-96), no SharePoint marks (DUG-97), "
+    print(f"ship checks passed on {label}: entry point is local (DUG-96), no SharePoint marks (DUG-97), debug off (DUG-153), "
           f"only the commit's web files ship{' unchanged' if args.mode == 'ipa' else ''} (DUG-44).")
     return 0
 
