@@ -85,14 +85,15 @@ class ShipChecks(unittest.TestCase):
                         f"expected a [{rule}] finding mentioning {needle!r}; output:\n{out}")
         return out
 
-    def make_ipa(self, build: str = "7", info_extra: dict | None = None, tamper=None, extra: dict | None = None) -> Path:
+    def make_ipa(self, build: str = "7", info_extra: dict | None = None, tamper=None, extra: dict | None = None,
+                 executable: bytes = b"\xcf\xfa\xed\xfe binary") -> Path:
         info = {"CFBundleIdentifier": BUNDLE_ID, "CFBundleVersion": build, "CFBundleShortVersionString": "1.0",
                 "ITSAppUsesNonExemptEncryption": False}
         info.update(info_extra or {})
         ipa = self.tmp / "DugOut.ipa"
         with zipfile.ZipFile(ipa, "w") as z:
             z.writestr("Payload/DugOut.app/Info.plist", plistlib.dumps(info, fmt=plistlib.FMT_BINARY))
-            z.writestr("Payload/DugOut.app/DugOut", b"\xcf\xfa\xed\xfe binary")
+            z.writestr("Payload/DugOut.app/DugOut", executable)
             z.writestr("Payload/DugOut.app/embedded.mobileprovision", b"profile")
             for name, data in ship_checks.repo_shipped_files(self.tmp).items():
                 if tamper:
@@ -327,6 +328,96 @@ class ShipChecks(unittest.TestCase):
         git(self.tmp, "add", "vendor/NOTES.md")
         self.assert_fails("DUG-97", "vendor/NOTES.md")
 
+    # ---------------------------------------------------------------- round two of the pre-flight review
+
+    def test_swift_in_a_linked_package(self) -> None:
+        self.write("ios/DugOutCore/Sources/DugOutCore/WebUpdate.swift",
+                   'import Foundation\nlet updateURL = URL(string: "https://cdn.example.com/web.zip")!\n')
+        git(self.tmp, "add", "ios/DugOutCore")
+        self.assert_fails("DUG-96", "cdn.example.com")
+
+    def test_project_compiling_swift_outside_the_checked_folders(self) -> None:
+        self.edit(ship_checks.PBXPROJ, "/* LocalHTTPServer.swift in Sources */,",
+                  "/* LocalHTTPServer.swift in Sources */,\n\t\t\t\tD06000000000000000000FFF /* WebUpdate.swift in Sources */,")
+        self.assert_fails("DUG-44", "WebUpdate.swift")
+
+    def test_project_linking_an_unread_package(self) -> None:
+        self.edit(ship_checks.PBXPROJ, "/* Begin PBXResourcesBuildPhase section */",
+                  "/* Begin XCSwiftPackageProductDependency section */\n\t\tBBBB /* OtherKit */ = {\n"
+                  "\t\t\tisa = XCSwiftPackageProductDependency;\n\t\t\tproductName = OtherKit;\n\t\t};\n"
+                  "/* End XCSwiftPackageProductDependency section */\n\n/* Begin PBXResourcesBuildPhase section */")
+        self.assert_fails("DUG-44", "OtherKit")
+
+    def test_detector_without_the_shipped_model(self) -> None:
+        self.edit("js/pose.js", "modelType: 'SinglePose.Lightning',\n        modelUrl: CFG.MODEL_URL",
+                  "modelType: 'SinglePose.Thunder'")
+        self.assert_fails("DUG-96", "createDetector")
+
+    def test_detector_with_a_mistyped_model_key(self) -> None:
+        self.edit("js/pose.js", "modelUrl: CFG.MODEL_URL", "modelUrl: CFG.MODEL_URI")
+        self.assert_fails("DUG-96", "createDetector")
+
+    def test_api_key_pasted_into_a_script(self) -> None:
+        self.write("js/ai.js", self.read("js/ai.js") + "\nconst FALLBACK = 'sk-ant-api03-PLANTEDPLANTEDPLANTEDPLANTED';\n")
+        self.assert_fails("DUG-44", "secret-like content")
+
+    def test_private_key_in_a_vendored_text_file(self) -> None:
+        self.write("vendor/movenet/notes.txt", "-----BEGIN PRIVATE KEY-----\nplanted\n")
+        git(self.tmp, "add", "vendor/movenet/notes.txt")
+        self.assert_fails("DUG-44", "secret-like content")
+
+    def test_pfx_bundle(self) -> None:
+        self.write("vendor/dist.pfx", b"planted")
+        git(self.tmp, "add", "-f", "vendor/dist.pfx")
+        self.assert_fails("DUG-44", "credential")
+
+    def test_swift_url_from_pieces(self) -> None:
+        self.edit(VC, "override func viewDidLoad() {",
+                  'override func viewDidLoad() {\n        let scheme = "https"; _ = URL(string: "\\(scheme)://cdn.example.com/index.html")')
+        self.assert_fails("DUG-96", "assembled from pieces")
+
+    def test_swift_scheme_string_piece(self) -> None:
+        self.edit(VC, "override func viewDidLoad() {",
+                  'override func viewDidLoad() {\n        _ = URL(string: "https:" + "//cdn.example.com/index.html")')
+        self.assert_fails("DUG-96", "assembled from pieces")
+
+    def test_swift_user_info_with_interpolated_port(self) -> None:
+        self.edit(VC, "override func viewDidLoad() {",
+                  'override func viewDidLoad() {\n        let port = 8384; _ = URL(string: "http://127.0.0.1:\\(port)@dugout.example.com/index.html")')
+        self.assert_fails("DUG-96", "user info")
+
+    def test_swift_raw_string_does_not_hide_a_url(self) -> None:
+        self.edit(VC, "override func viewDidLoad() {",
+                  'private let heightHint = #"e.g. 5\'10""#\n    private let updateURL = URL(string: "https://cdn.example.com/web.zip")\n'
+                  "    override func viewDidLoad() {")
+        self.assert_fails("DUG-96", "cdn.example.com")
+
+    def test_svg_namespace_in_our_script_is_allowed(self) -> None:
+        self.edit("js/app.js", "(function", "const SVG_NS = 'http://www.w3.org/2000/svg';\n(function")
+        self.passes()
+
+    def test_licence_banner_in_a_vendored_stylesheet_is_allowed(self) -> None:
+        self.write("vendor/slider.min.css", "/*! slider | MIT | https://example.org/slider */.a{color:red}\n")
+        git(self.tmp, "add", "vendor/slider.min.css")
+        self.passes()
+
+    def test_css_hex_escaped_scheme(self) -> None:
+        css = sorted(p for p in (self.tmp / "css").glob("*.css"))[0].relative_to(self.tmp).as_posix()
+        self.write(css, self.read(css) + '\n@import url("\\68ttps://cdn.example.com/x.css");\n')
+        self.assert_fails("DUG-96", "stylesheet")
+
+    def test_script_address_from_location_protocol(self) -> None:
+        self.edit("js/app.js", "(function", "const LIB = `${location.protocol}//cdn.example.com/lib.js`;\n(function")
+        self.assert_fails("DUG-96", "js/app.js")
+
+    def test_protocol_relative_without_a_path(self) -> None:
+        self.edit("js/app.js", "(function", "fetch('//api.example.com?q=1');\n(function")
+        self.assert_fails("DUG-96", "js/app.js")
+
+    def test_script_with_escaped_slashes(self) -> None:
+        self.edit("js/app.js", "(function", "const U = 'https:\\/\\/cdn.example.com\\/a.js';\n(function")
+        self.assert_fails("DUG-96", "cdn.example.com")
+
     # ---------------------------------------------------------------- the .ipa: what actually ships
 
     def test_clean_ipa_passes(self) -> None:
@@ -361,6 +452,27 @@ class ShipChecks(unittest.TestCase):
     def test_ipa_with_a_start_url_in_its_info_plist(self) -> None:
         ipa = self.make_ipa(info_extra={"DugOutStartURL": "https://staging.example.com/"})
         self.assert_fails("DUG-96", "DugOutStartURL", *self.ipa_args(ipa))
+
+    def test_ipa_compared_with_the_commit(self) -> None:
+        self.edit("js/app.js", "(function", "/* edited after the commit */\n(function")
+        ipa = self.make_ipa()          # built from disk: carries the uncommitted edit
+        self.assert_fails("DUG-44", "differs from the repo", *self.ipa_args(ipa), "--commit", "HEAD")
+
+    def _macho(self, before_signature: bytes, after_signature: bytes = b"") -> bytes:
+        import struct
+        header = struct.pack("<IIIIIIII", 0xFEEDFACF, 0x0100000C, 0, 2, 1, 16, 0, 0)
+        body = b"\x00" * 16 + before_signature
+        dataoff = 32 + 16 + len(body)
+        cmd = struct.pack("<IIII", 0x1D, 16, dataoff, len(after_signature))
+        return header + cmd + body + after_signature
+
+    def test_ipa_executable_with_an_outside_address(self) -> None:
+        ipa = self.make_ipa(executable=self._macho(b"http://127.0.0.1:\x00https://cdn.example.com/web.zip\x00"))
+        self.assert_fails("DUG-96", "compiled into the app", *self.ipa_args(ipa))
+
+    def test_ipa_signature_certificate_urls_are_not_the_app(self) -> None:
+        ipa = self.make_ipa(executable=self._macho(b"http://127.0.0.1:\x00", b"http://crl.apple.com/root.crl\x00"))
+        self.passes(*self.ipa_args(ipa))
 
     def test_ipa_wrong_build_number(self) -> None:
         self.assert_fails("DUG-63", "build number", *self.ipa_args(self.make_ipa(build="6")))

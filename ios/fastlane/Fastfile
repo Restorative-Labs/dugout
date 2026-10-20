@@ -3,7 +3,8 @@
 #   cd ios && fastlane beta                 # check → number → archive → check → upload → testers
 #   cd ios && fastlane beta dry_run:true    # build and check only: no upload, no writes to Apple
 #
-# Any other option, or any other spelling of dry_run, stops the lane — a typo must never upload.
+# Any other option or value stops the lane (fastlane itself also reads yes/no as true/false) —
+# a typo must never upload.
 #
 # A real run ships exactly a commit: it refuses uncommitted changes, and scripts/ship_checks.py
 # refuses any file inside a bundled folder that the commit does not have (ignored files included).
@@ -66,10 +67,15 @@ platform :ios do
       # in that mode fastlane deletes ~/.appstoreconnect/private_keys after uploading — the only key
       UI.user_error!("Unset FASTLANE_ITUNES_TRANSPORTER_USE_SHELL_SCRIPT: it makes fastlane delete the API key folder")
     end
+    if ENV.key?("SIGH_FORCE")
+      # sigh honours force before readonly: it would delete and re-create the profile, even on a dry run
+      UI.user_error!("Unset SIGH_FORCE: it makes sigh delete and re-create the App Store profile, even on a dry run")
+    end
 
     # 1. Ship exactly a commit.
     ensure_git_status_clean(show_uncommitted_changes: true) unless dry_run
-    commit = sh("git", "-C", REPO, "rev-parse", "--short", "HEAD", log: false).strip
+    full_commit = sh("git", "-C", REPO, "rev-parse", "HEAD", log: false).strip
+    commit = full_commit[0, 7]
     dirty = !sh("git", "-C", REPO, "status", "--porcelain", log: false).strip.empty?
     commit_label = dirty ? "#{commit} plus uncommitted changes" : commit
 
@@ -142,8 +148,15 @@ platform :ios do
       UI.user_error!("The build did not produce a fresh #{expected_ipa}")
     end
 
-    # 7. What will actually be uploaded: same checks, plus identical web files and the right plist.
-    ship_checks("ipa", REPO, expected_ipa, "--bundle-id", APP_ID, "--build", build_number.to_s)
+    # 7. What will actually be uploaded: same checks, plus the right plist and — on a real run — web
+    #    files identical to the commit itself, not to whatever the working tree holds now.
+    unless dry_run
+      ensure_git_status_clean(show_uncommitted_changes: true)
+      now = sh("git", "-C", REPO, "rev-parse", "HEAD", log: false).strip
+      UI.user_error!("HEAD moved during the build (#{commit} → #{now[0, 7]}); nothing was uploaded") unless now == full_commit
+    end
+    ship_checks("ipa", REPO, expected_ipa, "--bundle-id", APP_ID, "--build", build_number.to_s,
+                *(dry_run ? [] : ["--commit", full_commit]))
     version = get_ipa_info_plist_value(ipa: expected_ipa, key: "CFBundleShortVersionString").to_s
 
     if dry_run
@@ -171,7 +184,8 @@ platform :ios do
 
     # 9. Into the testers' hands: find the build, make sure the group has it, and wait until
     #    TestFlight says it is testable — fail on any state a tester could not install.
-    build = Spaceship::ConnectAPI::Build.all(app_id: app.id, version: version, build_number: build_number.to_s, platform: IOS).first
+    # by number alone: it is unique (above every build), and App Store Connect may store "1.0" as "1.0.0"
+    build = Spaceship::ConnectAPI::Build.all(app_id: app.id, build_number: build_number.to_s, platform: IOS).first
     UI.user_error!("Build #{version} (#{build_number}) is not on App Store Connect after the upload") unless build
     UI.user_error!("Build #{build_number} is #{build.processing_state} on App Store Connect") unless build.processing_state == "VALID"
     group = app.get_beta_groups(filter: { name: TESTERS }).find { |g| g.name == TESTERS }

@@ -4,30 +4,33 @@
     python3 -I scripts/ship_checks.py source <repo>
         The files as they will be bundled, before anything is built.
 
-    python3 -I scripts/ship_checks.py ipa <repo> <DugOut.ipa> --bundle-id <id> --build <n>
+    python3 -I scripts/ship_checks.py ipa <repo> <DugOut.ipa> --bundle-id <id> --build <n> [--commit <sha>]
         What will actually be uploaded, after the build.
 
 What fails the build:
 
   DUG-96 / DUG-44  The app's entry point is an outside address.
-      * Native: every URL in the app's Swift code (comments aside) and every URL value in its
-        Info.plist must be the loopback server (127.0.0.1 / localhost). No scheme-only URL
-        pieces, URLComponents, file/HTML loading or network APIs. The loopback server must
-        serve from the app bundle.
+      * Native: every URL in the Swift the app compiles (its own sources and each linked local
+        package; comments aside), every URL value in its Info.plist, and every URL string compiled
+        into its executable must be the loopback server (127.0.0.1 / localhost). No URL pieces,
+        user info, URLComponents, file/HTML loading or network APIs. The loopback server must
+        serve from the app bundle, and the project may not compile Swift these checks do not read.
       * Web: index.html — the page the web view opens — and every stylesheet may not reference
         an outside address: no http(s)/ws(s) scheme, protocol-relative //host, <base href> or
         refresh redirect, HTML entities decoded first. W3C XML namespace identifiers
         (xmlns="http://www.w3.org/…") are not fetched and are allowed. Every <script src> and
         <link href> must be a file that ships.
-      * Scripts: no outside address in js/ except the AI adapter's own endpoint (CLAUDE.md
-        invariant 3), and the pose model (MODEL_URL) must be a file that ships — the vendored
-        detector silently falls back to a remote model when it is not.
+      * Scripts: no outside address in js/ (escaped or assembled from pieces included) except the
+        AI adapter's own endpoint (CLAUDE.md invariant 3). The pose model (MODEL_URL) must be a file
+        that ships, and every createDetector call must pass modelUrl: CFG.MODEL_URL — the vendored
+        detector silently falls back to a remote model otherwise.
   DUG-97  SharePoint marks in a shipped text file: xmlns:mso, CustomDocumentProperties, the
       urn:schemas-microsoft-com:office namespace, or a page whose head <title> is missing or blank.
   DUG-44  Only the commit ships, untouched: every file in a bundled folder must be tracked by git
-      (an ignored .env or .p8 inside js/ would otherwise ship), no credential-like file may be in
-      the app, and in the .ipa every shipped file is byte-identical to the repo's. Nothing is
-      transformed; nothing comes over the air.
+      (an ignored .env or .p8 inside js/ would otherwise ship), no credential-like file or
+      secret-like content (API key, private key) may be in the app, and in the .ipa every shipped
+      file is byte-identical to the commit's (--commit) or, for a dry run, the working tree's.
+      Nothing is transformed; nothing comes over the air.
   Packaging  the .ipa's bundle id and build number are the ones the lane asked for, and
       ITSAppUsesNonExemptEncryption is NO (so App Store Connect asks nothing by hand).
 
@@ -51,6 +54,8 @@ from pathlib import Path, PurePosixPath
 SHIPPED = ["index.html", "css", "js", "vendor", "shadow-sprite.jpg", "swing-shadow.mp4"]
 ENTRY = "index.html"
 NATIVE_DIR = "ios/DugOut"
+# Every folder whose Swift is compiled into the app: the target's own sources and each local package it links.
+NATIVE_DIRS = ["ios/DugOut", "ios/DugOutCore/Sources/DugOutCore"]
 PBXPROJ = "ios/DugOut.xcodeproj/project.pbxproj"
 CONFIG_JS = "js/config.js"
 LOOPBACK = {"127.0.0.1", "localhost", "::1", "[::1]"}
@@ -62,13 +67,19 @@ TEXT_SUFFIXES = {".html", ".htm", ".xhtml", ".css", ".js", ".mjs", ".json", ".we
 PAGE_SUFFIXES = {".html", ".htm", ".xhtml"}
 SHAREPOINT_MARKS = ["xmlns:mso", "CustomDocumentProperties", "urn:schemas-microsoft-com:office"]
 CREDENTIAL_PATTERNS = ["*.p8", "*.p8.*", "*.p12", "*.pem", "*.cer", "*.key", "*.keychain", "*.mobileprovision",
-                       ".env", ".env.*", "*.env", "AuthKey_*"]
+                       ".env", ".env.*", "*.env", "AuthKey_*",
+                       "*.pfx", "*.jks", "*.keystore", "*.der", "*.crt"]
+SECRET_RE = re.compile(rb"sk-ant-[A-Za-z0-9_-]{20,}|-----BEGIN [A-Z ]*PRIVATE KEY-----|AKIA[0-9A-Z]{16}")
+BINARY_URL_RE = re.compile(rb"(?i)\b(?:https?|wss?)://([^\x00/\s\"'\\)>]*)")
+W3C_NS_RE = re.compile(r"https?://www\.w3\.org/(?:2000/svg|1999/xlink|1999/xhtml|1998/Math/MathML|XML/1998/namespace)\b", re.I)
+SCHEME_PIECE_RE = re.compile(r"""(?<!\bhttp)(?<!\bhttps)(?<!\bws)(?<!\bwss)://|(["'`])(?:https?|wss?):\1""", re.I)
+DETECTOR_RE = re.compile(r"\bcreateDetector\s*\((?:[^{}()]|\{[^{}]*\}|\([^()]*\))*\)", re.S)
 IGNORED_EXTRAS = {".DS_Store"}          # Xcode's folder copy drops these
 
 URL_RE = re.compile(r"\b(https?|wss?)://([^/\s\"'\\)>]*)", re.IGNORECASE)
 SCHEME_RE = re.compile(r"\b(https?|wss?)\s*:", re.IGNORECASE)
 W3C_NAMESPACE_RE = re.compile(r"""\bxmlns(:[\w-]+)?\s*=\s*(["'])https?://www\.w3\.org/[^"']*\2""", re.IGNORECASE)
-PROTOCOL_RELATIVE_RE = re.compile(r"(?<![:\w/\\])//(?=[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)+(:\d+)?([/\"')\s,]|$))")
+PROTOCOL_RELATIVE_RE = re.compile(r"(?<![:\w/\\])//(?=[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)+(:\d+)?([/?#\"'`)\s,;>\]}]|$))")
 BASE_RE = re.compile(r"<base\b[^>]*\bhref\s*=", re.IGNORECASE)
 REFRESH_RE = re.compile(r"""<meta\b[^>]*http-equiv\s*=\s*["']?\s*refresh""", re.IGNORECASE)
 HEAD_RE = re.compile(r"<head\b[^>]*>(.*?)</head\s*>", re.IGNORECASE | re.DOTALL)
@@ -112,6 +123,13 @@ def strip_swift_comments(src: str) -> str:
             if src[i] == "\\":
                 i += 2; continue
             i += 1; continue
+        if src[i] == "#":
+            j = i
+            while j < n and src[j] == "#": j += 1
+            if j < n and src[j] == '"':
+                q = '"""' if src.startswith('"""', j) else '"'
+                close = q + "#" * (j - i)
+                k = src.find(close, j + len(q)); i = n if k < 0 else k + len(close); continue
         if src.startswith('"""', i):
             in_str = '"""'; i += 3; continue
         if src[i] == '"':
@@ -145,7 +163,7 @@ def is_credential(name: str) -> bool:
 # ---------------------------------------------------------------- DUG-96 / DUG-44: native entry point
 
 def check_native_entry(repo: Path, rep: Report) -> None:
-    sources = sorted((repo / NATIVE_DIR).rglob("*.swift"))
+    sources = sorted(p for d in NATIVE_DIRS for p in (repo / d).rglob("*.swift"))
     if not sources:
         rep.fail("DUG-96", NATIVE_DIR, "no Swift sources found — cannot tell what the app opens")
         return
@@ -154,6 +172,11 @@ def check_native_entry(repo: Path, rep: Report) -> None:
         raw = src.read_text(encoding="utf-8")
         code = strip_swift_comments(raw)
         rel = src.relative_to(repo)
+        for m in re.finditer(r"\b(https?|wss?)://([^/\s\"?#]*)", code, re.I):
+            if "@" in m.group(2):
+                rep.fail("DUG-96", f"{rel}:{line_of(code, m.start())}", f"user info in a URL in the app's code: {m.group(0)}")
+        for m in SCHEME_PIECE_RE.finditer(code):
+            rep.fail("DUG-96", f"{rel}:{line_of(code, m.start())}", f"a URL assembled from pieces in the app's code: {m.group(0)}")
         for m in URL_RE.finditer(code):
             host = url_host(m.group(2))
             if host not in LOOPBACK:
@@ -201,8 +224,9 @@ def check_plist_urls(data: bytes, where: str, rep: Report, source: bool = False)
 
 def outside_refs(text: str) -> list[tuple[int, str, str]]:
     """(offset, snippet, scanned text) of every outside address a page or stylesheet could fetch."""
-    clean = html.unescape(W3C_NAMESPACE_RE.sub(lambda m: " " * len(m.group(0)), text))
+    clean = W3C_NS_RE.sub(lambda m: " " * len(m.group(0)), html.unescape(W3C_NAMESPACE_RE.sub(lambda m: " " * len(m.group(0)), text)))
     hits = [(m.start(), m.group(0)) for m in SCHEME_RE.finditer(clean)]
+    hits += [(m.start(), f"URL assembled from pieces: {m.group(0)}") for m in SCHEME_PIECE_RE.finditer(clean)]
     hits += [(m.start(), clean[m.start():m.start() + 40].split()[0] if clean[m.start():].strip() else "//")
              for m in PROTOCOL_RELATIVE_RE.finditer(clean)]
     hits += [(m.start(), "<base href>") for m in BASE_RE.finditer(clean)]
@@ -226,7 +250,9 @@ def check_stylesheets(files: dict[str, bytes], rep: Report, where: str) -> None:
     for name, data in files.items():
         if PurePosixPath(name).suffix.lower() != ".css":
             continue
-        for off, snippet, clean in outside_refs(decode(data)):
+        text = re.sub(r"/\*.*?\*/", lambda m: re.sub(r"[^\n]", " ", m.group(0)), decode(data), flags=re.S)   # comments are not fetched
+        text = re.sub(r"\\([0-9a-fA-F]{1,6})[ \t]?", lambda m: chr(min(int(m.group(1), 16), 0x10FFFF)) if int(m.group(1), 16) != 10 else " ", text)   # CSS escapes: \68ttps is https
+        for off, snippet, clean in outside_refs(text):
             rep.fail("DUG-96", f"{where}{name}:{line_of(clean, off)}", f"outside address in a stylesheet: {snippet}")
 
 
@@ -235,13 +261,18 @@ def check_scripts(files: dict[str, bytes], rep: Report, where: str) -> None:
     for name, data in files.items():
         if not name.startswith("js/") or PurePosixPath(name).suffix.lower() not in (".js", ".mjs"):
             continue
-        text = decode(data)
+        text = W3C_NS_RE.sub(lambda m: " " * len(m.group(0)), decode(data).replace("\\/", "/"))   # "https:\/\/host" is "https://host"
+        for m in SCHEME_PIECE_RE.finditer(text):
+            rep.fail("DUG-96", f"{where}{name}:{line_of(text, m.start())}", f"a URL assembled from pieces in a shipped script: {m.group(0)}")
+        for m in DETECTOR_RE.finditer(text):
+            if not re.search(r"\bmodelUrl\s*:\s*CFG\.MODEL_URL\b", m.group(0)):
+                rep.fail("DUG-96", f"{where}{name}:{line_of(text, m.start())}", "createDetector without modelUrl: CFG.MODEL_URL — the detector would fetch its model from the internet")
         for m in URL_RE.finditer(text):
             if url_host(m.group(2)) in LOOPBACK or (name, url_host(m.group(2))) in SCRIPT_ALLOWED:
                 continue
             rep.fail("DUG-96", f"{where}{name}:{line_of(text, m.start())}", f"outside address in a shipped script: {m.group(0)}")
         for m in PROTOCOL_RELATIVE_RE.finditer(text):
-            if text[m.start() - 1:m.start()] in ("'", '"', "`", "("):     # a string, not a // comment
+            if text[m.start() - 1:m.start()] in ("'", '"', "`", "(", "}"):     # a string, not a // comment
                 rep.fail("DUG-96", f"{where}{name}:{line_of(text, m.start())}", "protocol-relative address in a shipped script")
     cfg = files.get(CONFIG_JS)
     if cfg is None:
@@ -292,6 +323,49 @@ def repo_shipped_files(repo: Path) -> dict[str, bytes]:
     return {name: (repo / name).read_bytes() for name in tracked_shipped(repo) if (repo / name).is_file()}
 
 
+def check_secrets(files: dict[str, bytes], rep: Report, where: str) -> None:
+    for name, data in files.items():
+        if SECRET_RE.search(data):
+            rep.fail("DUG-44", where + name, "secret-like content (API key or private key) in a shipped file")
+
+
+def macho_without_signature(data: bytes) -> bytes:
+    """A thin 64-bit Mach-O up to its code signature (the signature's certificates name Apple's CRL/OCSP hosts)."""
+    import struct
+    try:
+        ncmds, off = struct.unpack_from("<I", data, 16)[0], 32
+        for _ in range(ncmds):
+            cmd, size = struct.unpack_from("<II", data, off)
+            if cmd == 0x1D:                               # LC_CODE_SIGNATURE
+                return data[:struct.unpack_from("<I", data, off + 8)[0]]
+            off += size
+    except struct.error:
+        pass
+    return data
+
+
+def check_binaries(shipped: dict[str, bytes], rep: Report, where: str) -> None:
+    for name, data in shipped.items():
+        if data[:4] == b"\xca\xfe\xba\xbe":
+            rep.fail("DUG-96", where + name, "a fat binary — the URL scan reads thin arm64 only")
+        if data[:4] == b"\xcf\xfa\xed\xfe":
+            data = macho_without_signature(data)
+            for m in BINARY_URL_RE.finditer(data):
+                if url_host(m.group(1).decode("latin-1")) not in LOOPBACK:
+                    rep.fail("DUG-96", where + name, f"outside address compiled into the app: {m.group(0).decode('latin-1')}")
+
+
+def commit_shipped_files(repo: Path, commit: str) -> dict[str, bytes]:
+    """Every file the app bundles, as the commit has it (not as the working tree has it now)."""
+    out = {}
+    for name in git(repo, "ls-tree", "-r", "-z", "--name-only", commit, "--", *SHIPPED):
+        r = subprocess.run(["git", "-C", str(repo), "cat-file", "blob", f"{commit}:{name}"], capture_output=True)
+        if r.returncode != 0:
+            raise SystemExit(f"FAIL [DUG-44] {name}: cannot read it from {commit}")
+        out[name] = r.stdout
+    return out
+
+
 def check_untracked(repo: Path, rep: Report) -> None:
     """Files on disk in a bundled folder that the commit does not have — ignored ones included."""
     for name in sorted(git(repo, "ls-files", "-z", "--others", "--", *SHIPPED)):
@@ -313,6 +387,14 @@ def check_project_resources(repo: Path, rep: Report) -> None:
     elif bundled != sorted(SHIPPED):
         rep.fail("DUG-44", PBXPROJ, f"the app bundles {bundled}, but these checks cover {sorted(SHIPPED)} — "
                                     "update SHIPPED in scripts/ship_checks.py")
+    compiled = {p.name for d in NATIVE_DIRS for p in (repo / d).rglob("*.swift")}
+    for phase in re.finditer(r"isa = PBXSourcesBuildPhase;.*?files = \((.*?)\);", pbx, re.DOTALL):
+        for name in re.findall(r"/\* (.+?) in Sources \*/", phase.group(1)):
+            if name not in compiled:
+                rep.fail("DUG-44", PBXPROJ, f"the app compiles {name}, which is outside {NATIVE_DIRS} — extend the checks first")
+    for m in re.finditer(r"isa = XCSwiftPackageProductDependency;\s*(?:package = \w+[^;]*;\s*)?productName = \"?([\w-]+)\"?;", pbx):
+        if f"ios/{m.group(1)}/Sources/{m.group(1)}" not in NATIVE_DIRS:
+            rep.fail("DUG-44", PBXPROJ, f"the app links the package {m.group(1)}, whose Swift these checks do not read — add it to NATIVE_DIRS")
     for m in re.finditer(r"isa = (PBXCopyFilesBuildPhase|PBXShellScriptBuildPhase);", pbx):
         rep.fail("DUG-44", PBXPROJ, f"a {m.group(1)} could put unchecked files in the app — extend the checks first")
 
@@ -333,13 +415,14 @@ def run_source(repo: Path) -> Report:
         check_web_entry(decode(files[ENTRY]), ENTRY, lambda r: r in files, rep)
     check_stylesheets(files, rep, "")
     check_scripts(files, rep, "")
-    native = {p.relative_to(repo).as_posix(): p.read_bytes() for p in sorted((repo / NATIVE_DIR).rglob("*"))
+    native = {p.relative_to(repo).as_posix(): p.read_bytes() for d in NATIVE_DIRS for p in sorted((repo / d).rglob("*"))
               if p.is_file() and p.suffix in (".swift", ".plist", ".strings")}
     check_sharepoint({**files, **native}, rep, "")
+    check_secrets({**files, **native}, rep, "")
     return rep
 
 
-def run_ipa(repo: Path, ipa: Path, bundle_id: str, build: str) -> Report:
+def run_ipa(repo: Path, ipa: Path, bundle_id: str, build: str, commit: str | None = None) -> Report:
     rep = Report()
     with zipfile.ZipFile(ipa) as z:
         apps = sorted({n.split("/")[1] for n in z.namelist() if n.startswith("Payload/") and n.split("/")[1].endswith(".app")})
@@ -351,7 +434,7 @@ def run_ipa(repo: Path, ipa: Path, bundle_id: str, build: str) -> Report:
     where = f"{ipa.name}!{apps[0]}/"
 
     # DUG-44: exactly the commit's web files, untouched; nothing credential-like anywhere
-    repo_files = repo_shipped_files(repo)
+    repo_files = commit_shipped_files(repo, commit) if commit else repo_shipped_files(repo)
     for name, data in repo_files.items():
         if name not in shipped:
             rep.fail("DUG-44", where + name, "missing from the app")
@@ -376,6 +459,8 @@ def run_ipa(repo: Path, ipa: Path, bundle_id: str, build: str) -> Report:
     check_stylesheets(shipped, rep, where)
     check_scripts(shipped, rep, where)
     check_sharepoint({n: d for n, d in shipped.items() if n != "Info.plist"}, rep, where)
+    check_secrets(shipped, rep, where)
+    check_binaries(shipped, rep, where)
 
     # packaging: what App Store Connect will read
     try:
@@ -403,10 +488,11 @@ def main(argv: list[str]) -> int:
     i.add_argument("ipa", type=Path)
     i.add_argument("--bundle-id", required=True)
     i.add_argument("--build", required=True)
+    i.add_argument("--commit", help="compare with this commit instead of the working tree (real runs)")
     args = ap.parse_args(argv)
 
     repo = args.repo.resolve()
-    rep = run_source(repo) if args.mode == "source" else run_ipa(repo, args.ipa.resolve(), args.bundle_id, args.build)
+    rep = run_source(repo) if args.mode == "source" else run_ipa(repo, args.ipa.resolve(), args.bundle_id, args.build, args.commit)
     label = "source" if args.mode == "source" else args.ipa.name
     for f in rep.failures:
         print(f)

@@ -76,10 +76,12 @@ the lane — a typo can never upload.
 - **One-time keychain prompt.** The first time codesign uses the distribution key, macOS asks for the
   login password. Click **Always Allow**, or every run waits at that dialog.
 - **The build stops** if `scripts/ship_checks.py` finds an outside address in the app's entry point
-  — native or web — or in our own scripts or the pose model's location (DUG-96); SharePoint marks
-  in a shipped file (DUG-97); or anything but the commit's web files, untouched, inside the app
-  (DUG-44: the web app ships inside the app; no over-the-air updates). It runs on the source before
-  the archive and on the `.ipa` after. `python3 -I scripts/test_ship_checks.py` plants each
+  — the Swift it compiles, its Info.plist, the strings in its executable, or `index.html` — or in a
+  stylesheet, our own scripts or the pose model's location (DUG-96); SharePoint marks in a shipped
+  file (DUG-97); or anything but the commit's web files, untouched, inside the app, including any
+  credential-like file or pasted key (DUG-44: the web app ships inside the app; no over-the-air
+  updates). It runs on the source before the archive and on the `.ipa` after; on a real run the
+  `.ipa` is compared with the commit itself. `python3 -I scripts/test_ship_checks.py` plants each
   violation and proves it fails.
 - Needs fastlane (Homebrew) and Xcode. Build output goes to `ios/fastlane/build/` (ignored).
 
