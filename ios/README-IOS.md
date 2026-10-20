@@ -48,25 +48,39 @@ as a native iPhone app. No Node, no CocoaPods, no build steps — open, sign, Ru
 cd ios && fastlane beta
 ```
 
-That checks the files, picks the next build number, archives, checks the built app,
-uploads it to App Store Connect, waits for processing and confirms the build is in the
-**DugOut testers** group (automatic distribution is on, so testers get it with no hand
-step). `fastlane beta dry_run:true` does everything except the upload.
+In order: refuse uncommitted changes; run the ship checks on the files; pick the next build
+number; fetch the App Store signing profile; archive and export; run the ship checks again on the
+`.ipa`; upload; wait for App Store Connect to process it; then wait until TestFlight reports the
+build **IN_BETA_TESTING** for the internal **DugOut testers** group (automatic distribution is on,
+so testers get it with no hand step). It fails loudly on any state a tester could not install.
 
-- **Ships exactly a commit.** The lane refuses a working tree with uncommitted changes.
-- **Build number** = one above the highest of TestFlight's latest upload and the project's
-  `CURRENT_PROJECT_VERSION`, passed to the archive. The project file is not rewritten.
-- **No Apple ID sign-in.** It authenticates with the App Store Connect API key
-  (`~/.appstoreconnect/private_keys/AuthKey_<ASC_KEY_ID>.p8`, team key "DugOut fastlane"). Key ID
-  and Issuer ID come from the environment, an untracked `ios/fastlane/.env`, or
-  `~/.appstoreconnect/dugout.env`. Never commit any of them.
-- **Signing**: the Restorative Labs LLC Apple Distribution certificate in the login keychain;
-  Xcode creates or refreshes the App Store profile with the API key.
-- **The build stops** if `scripts/ship_checks.py` finds an outside address in the app's entry
-  point (DUG-96), SharePoint marks in a shipped file (DUG-97), or a web file in the built app
-  that differs from the repo (DUG-44 — the web app ships inside the app, untouched; no
-  over-the-air updates). It runs on the source before the archive and on the `.ipa` after.
-  `python3 scripts/test_ship_checks.py` plants each violation and proves it fails.
+`fastlane beta dry_run:true` builds, signs and checks only: no upload and no writes to Apple (it
+skips the clean-tree rule, so it can check uncommitted work). Any other option or spelling stops
+the lane — a typo can never upload.
+
+- **Ships exactly a commit.** A real run refuses uncommitted changes, and the checks refuse any
+  file inside `css/`, `js/` or `vendor/` that the commit does not have — git-ignored ones included.
+- **Build number** = one above the highest of TestFlight's latest upload, its highest build and the
+  project's `CURRENT_PROJECT_VERSION`, passed to the archive. The project file is not rewritten.
+  If processing takes over an hour the lane stops and says the build *was* uploaded — do not
+  re-run it then; watch TestFlight.
+- **No Apple ID sign-in.** The App Store Connect API key is
+  `~/.appstoreconnect/private_keys/AuthKey_<ASC_KEY_ID>.p8` (team key "DugOut fastlane"; override
+  the path with `ASC_KEY_PATH`). `ASC_KEY_ID` and `ASC_ISSUER_ID` come from the shell, else from the
+  dotenv files fastlane loads itself (`ios/fastlane/.env`, `.env.default`, …), else from
+  `~/.appstoreconnect/dugout.env`. Keep both files `chmod 600`. Never commit any of them.
+- **Signing**: the Restorative Labs LLC "Apple Distribution" certificate in the login keychain and
+  the App Store profile "com.restorativelabs.dugout-ios AppStore", which the lane fetches with the
+  API key (a real run creates it if missing). The archive and export are signed by hand — xcodebuild
+  never talks to Apple and the key never appears on its command line.
+- **One-time keychain prompt.** The first time codesign uses the distribution key, macOS asks for the
+  login password. Click **Always Allow**, or every run waits at that dialog.
+- **The build stops** if `scripts/ship_checks.py` finds an outside address in the app's entry point
+  — native or web — or in our own scripts or the pose model's location (DUG-96); SharePoint marks
+  in a shipped file (DUG-97); or anything but the commit's web files, untouched, inside the app
+  (DUG-44: the web app ships inside the app; no over-the-air updates). It runs on the source before
+  the archive and on the `.ipa` after. `python3 -I scripts/test_ship_checks.py` plants each
+  violation and proves it fails.
 - Needs fastlane (Homebrew) and Xcode. Build output goes to `ios/fastlane/build/` (ignored).
 
 ## Updating the web app

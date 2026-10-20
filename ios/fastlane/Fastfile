@@ -1,24 +1,31 @@
 # DugOut — one command sends a build to TestFlight (DUG-63).
 #
 #   cd ios && fastlane beta                 # check → number → archive → check → upload → testers
-#   cd ios && fastlane beta dry_run:true    # everything except the upload (and the clean-tree rule)
+#   cd ios && fastlane beta dry_run:true    # build and check only: no upload, no writes to Apple
 #
-# The lane ships exactly a commit: it refuses a working tree with uncommitted changes.
+# Any other option, or any other spelling of dry_run, stops the lane — a typo must never upload.
+#
+# A real run ships exactly a commit: it refuses uncommitted changes, and scripts/ship_checks.py
+# refuses any file inside a bundled folder that the commit does not have (ignored files included).
 #
 # Credentials never live in the repo. The App Store Connect API key is the .p8 at
-# ~/.appstoreconnect/private_keys/AuthKey_<ASC_KEY_ID>.p8. ASC_KEY_ID and ASC_ISSUER_ID come from
-# the environment, an untracked ios/fastlane/.env, or ~/.appstoreconnect/dugout.env — first found
-# wins. No Apple ID sign-in is used anywhere.
+# ~/.appstoreconnect/private_keys/AuthKey_<ASC_KEY_ID>.p8 (override: ASC_KEY_PATH). ASC_KEY_ID and
+# ASC_ISSUER_ID come from the shell, else from the dotenv files fastlane itself loads
+# (ios/fastlane/.env, .env.default, …), else from ~/.appstoreconnect/dugout.env. No Apple ID
+# sign-in is used anywhere.
+#
+# Signing: the Restorative Labs LLC "Apple Distribution" certificate in the login keychain and the
+# App Store profile "com.restorativelabs.dugout-ios AppStore", fetched — or, on a real run, created
+# once — with the API key. The first signing on a Mac shows a keychain prompt for codesign: answer
+# "Always Allow" once and later runs need no hand step.
 #
 # What stops the build (scripts/ship_checks.py, run before the archive and again on the .ipa):
-#   DUG-96  the app's entry point is an outside address;
+#   DUG-96  the app's entry point (or our own scripts, or the pose model) points to an outside address;
 #   DUG-97  SharePoint marks in a shipped file (xmlns:mso, CustomDocumentProperties, blank <title>);
-#   DUG-44  a web file in the app differs from the repo — the web app ships inside the app, untouched;
-#           there are no over-the-air updates.
+#   DUG-44  anything but the commit's web files, untouched, inside the app — no over-the-air updates.
 
 require "dotenv"
 require "fileutils"
-require "shellwords"
 
 default_platform(:ios)
 
@@ -30,27 +37,43 @@ OUTPUT       = File.join(FASTLANE_DIR, "build")
 APP_ID       = "com.restorativelabs.dugout-ios"   # CANON R-31
 TEAM_ID      = "NKNR8F3VKC"                       # Restorative Labs LLC
 TESTERS      = "DugOut testers"                   # internal group, automatic distribution on
+IOS          = Spaceship::ConnectAPI::Platform::IOS
+TESTABLE     = %w[IN_BETA_TESTING].freeze
+WAITING      = %w[PROCESSING READY_FOR_BETA_TESTING].freeze
 
-ENV["LC_ALL"] ||= "en_US.UTF-8"
-ENV["LANG"]   ||= "en_US.UTF-8"
+# UTF-8 whatever the calling shell says: build output that is not ASCII otherwise crashes the log
+# formatter mid-archive ("invalid byte sequence in US-ASCII").
+ENV["LC_ALL"] = ENV["LANG"] = "en_US.UTF-8"
+Encoding.default_external = Encoding::UTF_8
 Dotenv.load(File.expand_path("~/.appstoreconnect/dugout.env"))   # never overrides a value already set
 
-# scripts/ship_checks.py — any finding fails the lane, before anything is uploaded.
+# scripts/ship_checks.py in isolated mode (no stray module can stand in for its imports);
+# any finding fails the lane, before anything is uploaded.
 def ship_checks(*args)
-  sh("python3", CHECKS, *args.map(&:to_s))
+  sh("python3", "-I", CHECKS, *args.map(&:to_s))
 end
 
 platform :ios do
   desc "Check, number, archive and upload DugOut to TestFlight for the '#{TESTERS}' group"
   lane :beta do |options|
-    dry_run = options[:dry_run].to_s == "true"
-    UI.important("DRY RUN — everything except the upload.") if dry_run
+    unknown = options.keys - [:dry_run]
+    UI.user_error!("Unknown option(s): #{unknown.join(', ')}. The only option is dry_run:true.") unless unknown.empty?
+    dry_run = { nil => false, true => true, false => false }.fetch(options[:dry_run]) do
+      UI.user_error!("dry_run must be true or false, got #{options[:dry_run].inspect}")
+    end
+    UI.important(dry_run ? "DRY RUN — build and check only; nothing is uploaded." : "REAL RUN — this uploads to TestFlight.")
+    if ENV["FASTLANE_ITUNES_TRANSPORTER_USE_SHELL_SCRIPT"]
+      # in that mode fastlane deletes ~/.appstoreconnect/private_keys after uploading — the only key
+      UI.user_error!("Unset FASTLANE_ITUNES_TRANSPORTER_USE_SHELL_SCRIPT: it makes fastlane delete the API key folder")
+    end
 
     # 1. Ship exactly a commit.
     ensure_git_status_clean(show_uncommitted_changes: true) unless dry_run
     commit = sh("git", "-C", REPO, "rev-parse", "--short", "HEAD", log: false).strip
+    dirty = !sh("git", "-C", REPO, "status", "--porcelain", log: false).strip.empty?
+    commit_label = dirty ? "#{commit} plus uncommitted changes" : commit
 
-    # 2. The files as committed: entry point, SharePoint marks, what ships (before any Apple call).
+    # 2. The files as they will be bundled: entry point, SharePoint marks, only the commit's files.
     ship_checks("source", REPO)
 
     # 3. App Store Connect, by API key only.
@@ -65,28 +88,28 @@ platform :ios do
     UI.user_error!("No App Store Connect app for #{APP_ID}") unless app
     group = app.get_beta_groups(filter: { name: TESTERS }).find { |g| g.name == TESTERS }
     UI.user_error!("No TestFlight group named '#{TESTERS}' on #{app.name}") unless group
+    UI.user_error!("'#{TESTERS}' is not an internal group — builds would need Beta App Review") unless group.is_internal_group
 
     # 4. Build number: one above anything TestFlight or the project has ever seen.
-    uploaded = latest_testflight_build_number(api_key: api_key, app_identifier: APP_ID, initial_build_number: 0).to_i
+    latest_upload = latest_testflight_build_number(api_key: api_key, app_identifier: APP_ID, initial_build_number: 0).to_i
+    highest_build = Spaceship::ConnectAPI::Build.all(app_id: app.id, platform: IOS).map { |b| b.version.to_i }.max.to_i
     in_project = File.read(File.join(PROJECT, "project.pbxproj")).scan(/CURRENT_PROJECT_VERSION = (\d+);/).flatten.map(&:to_i).max.to_i
-    build_number = [uploaded, in_project].max + 1
-    UI.message("Build number #{build_number} (TestFlight latest #{uploaded}, project #{in_project}), commit #{commit}")
+    build_number = [latest_upload, highest_build, in_project].max + 1
+    UI.message("Build number #{build_number} (TestFlight latest upload #{latest_upload}, highest build #{highest_build}, " \
+               "project #{in_project}), commit #{commit_label}")
 
-    # 5. Signing. The App Store profile is fetched — or created once — with the API key, against
-    #    the LLC's Apple Distribution certificate in this Mac's keychain. (Xcode's automatic export
-    #    would reach for a cloud-managed certificate, which an App Manager key may not use.)
+    # 5. Signing: the App Store profile for the LLC's Apple Distribution certificate, by API key.
+    #    A dry run only reads; a real run creates the profile if it is missing.
     FileUtils.mkdir_p(OUTPUT)
-    get_provisioning_profile(api_key: api_key, app_identifier: APP_ID, team_id: TEAM_ID,
+    get_provisioning_profile(api_key: api_key, app_identifier: APP_ID, team_id: TEAM_ID, readonly: dry_run,
                              output_path: OUTPUT, filename: "DugOut_AppStore.mobileprovision")
     profile_name = lane_context[SharedValues::SIGH_NAME]
     UI.user_error!("No App Store provisioning profile for #{APP_ID}") if profile_name.to_s.empty?
 
-    # 6. Archive (automatic development signing, profiles refreshed with the API key) and export
-    #    for the App Store with the distribution certificate and the profile above.
-    auth = ["-allowProvisioningUpdates",
-            "-authenticationKeyPath #{key_path.shellescape}",
-            "-authenticationKeyID #{key_id}",
-            "-authenticationKeyIssuerID #{issuer_id}"].join(" ")
+    # 6. Archive and export, signed by hand with that certificate and profile. Nothing here talks to
+    #    Apple: no -allowProvisioningUpdates, no key on the xcodebuild command line.
+    Dir.glob(File.join(OUTPUT, "DugOut-#{build_number}{.ipa,.app.dSYM.zip,.xcarchive}")).each { |p| FileUtils.rm_r(p) }
+    started = Time.now
     ipa = build_app(
       project: PROJECT,
       scheme: "DugOut",
@@ -101,49 +124,74 @@ platform :ios do
         manageAppVersionAndBuildNumber: false,
         uploadSymbols: true
       },
-      # gym passes xcargs to both the archive and the export, so the key flags go here once
-      xcargs: "CURRENT_PROJECT_VERSION=#{build_number} DEVELOPMENT_TEAM=#{TEAM_ID} #{auth}",
+      xcargs: {
+        "CURRENT_PROJECT_VERSION" => build_number.to_s,
+        "DEVELOPMENT_TEAM" => TEAM_ID,
+        "CODE_SIGN_STYLE" => "Manual",
+        "CODE_SIGN_IDENTITY" => "Apple Distribution",
+        "PROVISIONING_PROFILE_SPECIFIER" => profile_name
+      },
       skip_profile_detection: true,
       output_directory: OUTPUT,
       output_name: "DugOut-#{build_number}",
       archive_path: File.join(OUTPUT, "DugOut-#{build_number}.xcarchive"),
       buildlog_path: File.join(OUTPUT, "logs")
     )
+    expected_ipa = File.join(OUTPUT, "DugOut-#{build_number}.ipa")
+    unless File.expand_path(ipa.to_s) == expected_ipa && File.exist?(expected_ipa) && File.mtime(expected_ipa) >= started
+      UI.user_error!("The build did not produce a fresh #{expected_ipa}")
+    end
 
     # 7. What will actually be uploaded: same checks, plus identical web files and the right plist.
-    ship_checks("ipa", REPO, ipa, "--bundle-id", APP_ID, "--build", build_number.to_s)
+    ship_checks("ipa", REPO, expected_ipa, "--bundle-id", APP_ID, "--build", build_number.to_s)
+    version = get_ipa_info_plist_value(ipa: expected_ipa, key: "CFBundleShortVersionString").to_s
 
     if dry_run
-      UI.success("DRY RUN done: #{File.basename(ipa)} (build #{build_number}) built and checked; nothing uploaded.")
+      UI.success("DRY RUN done: DugOut #{version} (#{build_number}) from #{commit_label} built, signed and checked; " \
+                 "nothing uploaded.")
       next
     end
 
     # 8. Upload, and wait until App Store Connect has processed it.
-    upload_to_testflight(
-      api_key: api_key,
-      ipa: ipa,
-      app_identifier: APP_ID,
-      skip_submission: true,              # internal testing only: no Beta App Review
-      distribute_external: false,
-      skip_waiting_for_build_processing: false,
-      wait_processing_timeout_duration: 3600
-    )
+    begin
+      upload_to_testflight(
+        api_key: api_key,
+        ipa: expected_ipa,
+        app_identifier: APP_ID,
+        skip_submission: true,              # internal testing only: no Beta App Review
+        distribute_external: false,
+        skip_waiting_for_build_processing: false,
+        wait_processing_timeout_duration: 3600
+      )
+    rescue FastlaneCore::Interface::FastlaneCrash => e
+      raise unless e.message.include?("BuildWatcher exceeded")
+      UI.user_error!("Build #{build_number} WAS uploaded but App Store Connect has not finished processing it after an " \
+                     "hour. Do not re-run the lane (it would upload #{build_number + 1}); watch TestFlight instead.")
+    end
 
-    # 9. Into the testers' hands. The group has automatic distribution on; confirm it, or add the
-    #    build explicitly, then confirm the build is processed and testable.
-    build = Spaceship::ConnectAPI::Build.all(app_id: app.id, build_number: build_number.to_s, limit: 1).first
-    UI.user_error!("Build #{build_number} is not on App Store Connect after the upload") unless build
+    # 9. Into the testers' hands: find the build, make sure the group has it, and wait until
+    #    TestFlight says it is testable — fail on any state a tester could not install.
+    build = Spaceship::ConnectAPI::Build.all(app_id: app.id, version: version, build_number: build_number.to_s, platform: IOS).first
+    UI.user_error!("Build #{version} (#{build_number}) is not on App Store Connect after the upload") unless build
+    UI.user_error!("Build #{build_number} is #{build.processing_state} on App Store Connect") unless build.processing_state == "VALID"
     group = app.get_beta_groups(filter: { name: TESTERS }).find { |g| g.name == TESTERS }
+    UI.user_error!("TestFlight group '#{TESTERS}' disappeared during the run") unless group
     if group.has_access_to_all_builds
       UI.message("'#{TESTERS}' gets every build automatically (automatic distribution is on)")
     else
       build.add_beta_groups(beta_groups: [group])
       UI.message("Added build #{build_number} to '#{TESTERS}'")
     end
-    build = Spaceship::ConnectAPI::Build.get(build_id: build.id)
-    state = build.build_beta_detail&.internal_build_state
-    UI.user_error!("Build #{build_number} is #{build.processing_state} on App Store Connect") unless build.processing_state == "VALID"
-    UI.success("TestFlight: #{app.name} #{build.app_version} (#{build_number}) from #{commit} — processing VALID, " \
-               "internal testing #{state || 'unknown'}, group '#{TESTERS}'.")
+    state = nil
+    deadline = Time.now + 600
+    loop do
+      state = Spaceship::ConnectAPI::Build.get(build_id: build.id).build_beta_detail&.internal_build_state
+      break if TESTABLE.include?(state)
+      UI.user_error!("Build #{build_number} is #{state.inspect} for internal testing — testers cannot install it") unless WAITING.include?(state)
+      UI.user_error!("Build #{build_number} is still #{state} after 10 minutes — check TestFlight") if Time.now > deadline
+      UI.message("Internal testing state #{state}; checking again in 30 s")
+      sleep(30)
+    end
+    UI.success("TestFlight: #{app.name} #{version} (#{build_number}) from #{commit} — processed, #{state} for '#{TESTERS}'.")
   end
 end

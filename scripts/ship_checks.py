@@ -1,62 +1,83 @@
 #!/usr/bin/env python3
 """Ship checks for the iOS build — any failure stops the TestFlight lane (DUG-63).
 
-    python3 scripts/ship_checks.py source <repo>
-        The files as committed, before anything is built.
+    python3 -I scripts/ship_checks.py source <repo>
+        The files as they will be bundled, before anything is built.
 
-    python3 scripts/ship_checks.py ipa <repo> <DugOut.ipa> --bundle-id <id> --build <n>
+    python3 -I scripts/ship_checks.py ipa <repo> <DugOut.ipa> --bundle-id <id> --build <n>
         What will actually be uploaded, after the build.
 
 What fails the build:
 
   DUG-96 / DUG-44  The app's entry point is an outside address.
-      * Native: every http(s)/ws(s) URL written in the app's Swift code must be the loopback
-        server (127.0.0.1 / localhost). The web view must load the loopback index.html, and the
-        loopback server must serve from the app bundle — never from a download.
-      * Web: index.html, the page the web view opens, may not reference an outside address at
-        all — no http:, https:, protocol-relative //host, <base href> or refresh redirect
-        (XML namespace identifiers like xmlns="http://www.w3.org/2000/svg" are not fetched and
-        are allowed). The same holds for every stylesheet. Every <script src> and <link href>
-        in index.html must be a file that ships.
+      * Native: every URL in the app's Swift code (comments aside) and every URL value in its
+        Info.plist must be the loopback server (127.0.0.1 / localhost). No scheme-only URL
+        pieces, URLComponents, file/HTML loading or network APIs. The loopback server must
+        serve from the app bundle.
+      * Web: index.html — the page the web view opens — and every stylesheet may not reference
+        an outside address: no http(s)/ws(s) scheme, protocol-relative //host, <base href> or
+        refresh redirect, HTML entities decoded first. W3C XML namespace identifiers
+        (xmlns="http://www.w3.org/…") are not fetched and are allowed. Every <script src> and
+        <link href> must be a file that ships.
+      * Scripts: no outside address in js/ except the AI adapter's own endpoint (CLAUDE.md
+        invariant 3), and the pose model (MODEL_URL) must be a file that ships — the vendored
+        detector silently falls back to a remote model when it is not.
   DUG-97  SharePoint marks in a shipped text file: xmlns:mso, CustomDocumentProperties, the
-      urn:schemas-microsoft-com:office namespace, or an HTML <title> that is missing or blank.
-  DUG-44  The web files ship inside the app, untouched: in the .ipa, every shipped file is
-      byte-identical to the repo's. Nothing is transformed and nothing comes over the air.
+      urn:schemas-microsoft-com:office namespace, or a page whose head <title> is missing or blank.
+  DUG-44  Only the commit ships, untouched: every file in a bundled folder must be tracked by git
+      (an ignored .env or .p8 inside js/ would otherwise ship), no credential-like file may be in
+      the app, and in the .ipa every shipped file is byte-identical to the repo's. Nothing is
+      transformed; nothing comes over the air.
   Packaging  the .ipa's bundle id and build number are the ones the lane asked for, and
       ITSAppUsesNonExemptEncryption is NO (so App Store Connect asks nothing by hand).
 
-Standard library only. Prints one line per finding and exits 1 if there is any.
+Standard library only (run with python3 -I). Prints one line per finding; exits 1 if any.
 """
 from __future__ import annotations
 
 import argparse
+import fnmatch
 import hashlib
+import html
 import plistlib
 import re
+import subprocess
 import sys
 import zipfile
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
-# What the Xcode project bundles from the repo root (its Resources build phase, Assets aside).
-# checked against the project file in `source` mode, so this list cannot silently drift.
+# What the Xcode project bundles from the repo root (the DugOut target's Resources phase, Assets
+# aside) — checked against the project file, so this list cannot silently drift.
 SHIPPED = ["index.html", "css", "js", "vendor", "shadow-sprite.jpg", "swing-shadow.mp4"]
 ENTRY = "index.html"
 NATIVE_DIR = "ios/DugOut"
 PBXPROJ = "ios/DugOut.xcodeproj/project.pbxproj"
+CONFIG_JS = "js/config.js"
 LOOPBACK = {"127.0.0.1", "localhost", "::1", "[::1]"}
-TEXT_SUFFIXES = {".html", ".htm", ".css", ".js", ".mjs", ".json", ".svg", ".xml", ".txt", ".plist", ".swift"}
+# The one outside address a shipped script may hold: the AI adapter (CLAUDE.md invariant 3). It is
+# called only with a key the user enters on the device, and never loads code.
+SCRIPT_ALLOWED = {("js/ai.js", "api.anthropic.com")}      # (file, host)
+TEXT_SUFFIXES = {".html", ".htm", ".xhtml", ".css", ".js", ".mjs", ".json", ".webmanifest", ".map", ".svg",
+                 ".xml", ".txt", ".md", ".plist", ".strings", ".swift"}
+PAGE_SUFFIXES = {".html", ".htm", ".xhtml"}
 SHAREPOINT_MARKS = ["xmlns:mso", "CustomDocumentProperties", "urn:schemas-microsoft-com:office"]
+CREDENTIAL_PATTERNS = ["*.p8", "*.p8.*", "*.p12", "*.pem", "*.cer", "*.key", "*.keychain", "*.mobileprovision",
+                       ".env", ".env.*", "*.env", "AuthKey_*"]
+IGNORED_EXTRAS = {".DS_Store"}          # Xcode's folder copy drops these
 
-URL_RE = re.compile(r"\b(https?|wss?)://([^/\s\"'\\:)>]+)", re.IGNORECASE)
-SCHEME_RE = re.compile(r"\b(https?|wss?):", re.IGNORECASE)
-NAMESPACE_ATTR_RE = re.compile(r"""\bxmlns(:[\w-]+)?\s*=\s*["'][^"']*["']""", re.IGNORECASE)
-PROTOCOL_RELATIVE_RE = re.compile(
-    r"""(\b(src|href|action|poster|data|srcset|formaction|manifest|content)\s*=\s*["']?\s*//)"""
-    r"""|(url\(\s*["']?\s*//)|(@import\s+["']\s*//)""", re.IGNORECASE)
+URL_RE = re.compile(r"\b(https?|wss?)://([^/\s\"'\\)>]*)", re.IGNORECASE)
+SCHEME_RE = re.compile(r"\b(https?|wss?)\s*:", re.IGNORECASE)
+W3C_NAMESPACE_RE = re.compile(r"""\bxmlns(:[\w-]+)?\s*=\s*(["'])https?://www\.w3\.org/[^"']*\2""", re.IGNORECASE)
+PROTOCOL_RELATIVE_RE = re.compile(r"(?<![:\w/\\])//(?=[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)+(:\d+)?([/\"')\s,]|$))")
 BASE_RE = re.compile(r"<base\b[^>]*\bhref\s*=", re.IGNORECASE)
-REFRESH_RE = re.compile(r"""<meta\b[^>]*http-equiv\s*=\s*["']?refresh""", re.IGNORECASE)
+REFRESH_RE = re.compile(r"""<meta\b[^>]*http-equiv\s*=\s*["']?\s*refresh""", re.IGNORECASE)
+HEAD_RE = re.compile(r"<head\b[^>]*>(.*?)</head\s*>", re.IGNORECASE | re.DOTALL)
 TITLE_RE = re.compile(r"<title\b[^>]*>(.*?)</title\s*>", re.IGNORECASE | re.DOTALL)
 ASSET_RE = re.compile(r"""<(script|link)\b[^>]*?\b(src|href)\s*=\s*["']([^"']+)["']""", re.IGNORECASE)
+INVISIBLE = " ​‌‍⁠﻿"
+MODEL_URL_RE = re.compile(r"""\bMODEL_URL\s*:\s*(["'])(.*?)\1""")
+NATIVE_FORBIDDEN_APIS = ["URLSession", "NSURLConnection", "WKDownload", "URLComponents", "loadFileURL",
+                         "loadHTMLString", "load(_ data", "loadSimulatedRequest"]
 
 
 class Report:
@@ -71,57 +92,130 @@ def line_of(text: str, index: int) -> int:
     return text.count("\n", 0, index) + 1
 
 
-def strip_namespace_attrs(text: str) -> str:
-    """Blank out xmlns="…" attributes (identifiers, never fetched), keeping offsets."""
-    return NAMESPACE_ATTR_RE.sub(lambda m: " " * len(m.group(0)), text)
+def decode(data: bytes) -> str:
+    """Text as WebKit would read it: a BOM decides the encoding, otherwise UTF-8."""
+    if data.startswith(b"\xef\xbb\xbf"):
+        return data[3:].decode("utf-8", errors="replace")
+    if data.startswith((b"\xff\xfe", b"\xfe\xff")):
+        return data.decode("utf-16", errors="replace")
+    return data.decode("utf-8", errors="replace")
 
 
-# ---------------------------------------------------------------- DUG-96 / DUG-44: entry point
+def strip_swift_comments(src: str) -> str:
+    """Swift source with // and /* */ comments blanked (strings kept; offsets kept)."""
+    out, i, n = list(src), 0, len(src)
+    in_str = None                                    # '"' or '"""'
+    while i < n:
+        if in_str:
+            if src.startswith(in_str, i):
+                i += len(in_str); in_str = None; continue
+            if src[i] == "\\":
+                i += 2; continue
+            i += 1; continue
+        if src.startswith('"""', i):
+            in_str = '"""'; i += 3; continue
+        if src[i] == '"':
+            in_str = '"'; i += 1; continue
+        if src.startswith("//", i):
+            j = src.find("\n", i); j = n if j < 0 else j
+            for k in range(i, j): out[k] = " "
+            i = j; continue
+        if src.startswith("/*", i):
+            j = src.find("*/", i + 2); j = n if j < 0 else j + 2
+            for k in range(i, j):
+                if out[k] != "\n": out[k] = " "
+            i = j; continue
+        i += 1
+    return "".join(out)
+
+
+def url_host(authority: str) -> str:
+    """Host of a URL authority: user info and port removed, lower case."""
+    host = authority.rsplit("@", 1)[-1]
+    if host.startswith("["):
+        return host[: host.find("]") + 1].lower()
+    return host.split(":", 1)[0].lower()
+
+
+def is_credential(name: str) -> bool:
+    base = PurePosixPath(name).name
+    return any(fnmatch.fnmatch(base.lower(), p.lower()) for p in CREDENTIAL_PATTERNS)
+
+
+# ---------------------------------------------------------------- DUG-96 / DUG-44: native entry point
 
 def check_native_entry(repo: Path, rep: Report) -> None:
-    sources = sorted((repo / NATIVE_DIR).glob("*.swift"))
+    sources = sorted((repo / NATIVE_DIR).rglob("*.swift"))
     if not sources:
         rep.fail("DUG-96", NATIVE_DIR, "no Swift sources found — cannot tell what the app opens")
         return
-    loopback_entry = False
+    loopback_entry = serves_bundle = False
     for src in sources:
-        text = src.read_text(encoding="utf-8")
+        raw = src.read_text(encoding="utf-8")
+        code = strip_swift_comments(raw)
         rel = src.relative_to(repo)
-        for m in URL_RE.finditer(text):
-            host = m.group(2).lower()
+        for m in URL_RE.finditer(code):
+            host = url_host(m.group(2))
             if host not in LOOPBACK:
-                rep.fail("DUG-96", f"{rel}:{line_of(text, m.start())}",
-                         f"outside address in the app's code: {m.group(0)}")
-        if re.search(r"https?://(127\.0\.0\.1|localhost)[^\"]*/index\.html", text):
+                what = f"outside address in the app's code: {m.group(0)}" if host and not host.startswith("\\(") \
+                    else f"a URL whose host is assembled at run time: {m.group(0)}"
+                rep.fail("DUG-96", f"{rel}:{line_of(code, m.start())}", what)
+        for api in NATIVE_FORBIDDEN_APIS:
+            for m in re.finditer(re.escape(api) if not api.isidentifier() else rf"\b{api}\b", code):
+                rep.fail("DUG-44", f"{rel}:{line_of(code, m.start())}",
+                         f"{api} in the app's code — the app opens only the loopback server's shipped files")
+        if re.search(r'"https?://(127\.0\.0\.1|localhost):\\\(\w+\)/(index\.html)?"', code):
             loopback_entry = True
-        for api in ("URLSession", "loadHTMLString", "NSURLConnection", "WKDownload"):
-            for m in re.finditer(rf"\b{api}\b", text):
-                rep.fail("DUG-44", f"{rel}:{line_of(text, m.start())}",
-                         f"{api} in the app's code — the app runs only files shipped inside it")
+        if re.search(r"LocalHTTPServer\(\s*docRoot:\s*Bundle\.main\.resourceURL\b", code):
+            serves_bundle = True
     if not loopback_entry:
         rep.fail("DUG-96", NATIVE_DIR, "the web view does not open the loopback index.html")
-    vc = repo / NATIVE_DIR / "ViewController.swift"
-    if vc.exists() and "LocalHTTPServer(docRoot: Bundle.main.resourceURL" not in vc.read_text(encoding="utf-8"):
-        rep.fail("DUG-44", str(vc.relative_to(repo)),
-                 "the loopback server no longer serves from the app bundle (Bundle.main.resourceURL)")
+    if not serves_bundle:
+        rep.fail("DUG-44", NATIVE_DIR, "the loopback server does not serve from the app bundle (Bundle.main.resourceURL)")
+    plist = repo / NATIVE_DIR / "Info.plist"
+    if plist.exists():
+        check_plist_urls(plist.read_bytes(), str(plist.relative_to(repo)), rep, source=True)
 
 
-def outside_refs(text: str) -> list[tuple[int, str]]:
-    """(offset, snippet) of every outside address a page or stylesheet could fetch."""
-    clean = strip_namespace_attrs(text)
+def check_plist_urls(data: bytes, where: str, rep: Report, source: bool = False) -> None:
+    try:
+        info = plistlib.loads(data)
+    except Exception as exc:  # noqa: BLE001
+        if source:   # the source plist may hold build-setting placeholders; plistlib still reads it
+            rep.fail("DUG-96", where, f"unreadable: {exc}")
+        return
+
+    def walk(v, path):
+        if isinstance(v, dict):
+            for k, x in v.items(): walk(x, f"{path}.{k}")
+        elif isinstance(v, list):
+            for i, x in enumerate(v): walk(x, f"{path}[{i}]")
+        elif isinstance(v, str):
+            for m in URL_RE.finditer(v):
+                if url_host(m.group(2)) not in LOOPBACK:
+                    rep.fail("DUG-96", f"{where} {path.lstrip('.')}", f"outside address in the app's settings: {m.group(0)}")
+    walk(info, "")
+
+
+# ---------------------------------------------------------------- DUG-96: web entry point and scripts
+
+def outside_refs(text: str) -> list[tuple[int, str, str]]:
+    """(offset, snippet, scanned text) of every outside address a page or stylesheet could fetch."""
+    clean = html.unescape(W3C_NAMESPACE_RE.sub(lambda m: " " * len(m.group(0)), text))
     hits = [(m.start(), m.group(0)) for m in SCHEME_RE.finditer(clean)]
-    hits += [(m.start(), m.group(0).strip()) for m in PROTOCOL_RELATIVE_RE.finditer(clean)]
+    hits += [(m.start(), clean[m.start():m.start() + 40].split()[0] if clean[m.start():].strip() else "//")
+             for m in PROTOCOL_RELATIVE_RE.finditer(clean)]
     hits += [(m.start(), "<base href>") for m in BASE_RE.finditer(clean)]
     hits += [(m.start(), "refresh redirect") for m in REFRESH_RE.finditer(clean)]
-    return sorted(set(hits))
+    return [(off, snippet, clean) for off, snippet in sorted(set(hits))]
 
 
 def check_web_entry(entry_text: str, entry_label: str, exists, rep: Report) -> None:
-    for off, snippet in outside_refs(entry_text):
-        rep.fail("DUG-96", f"{entry_label}:{line_of(entry_text, off)}", f"outside address in the entry point: {snippet}")
+    for off, snippet, clean in outside_refs(entry_text):
+        rep.fail("DUG-96", f"{entry_label}:{line_of(clean, off)}", f"outside address in the entry point: {snippet}")
     for m in ASSET_RE.finditer(entry_text):
-        ref = m.group(3).split("#")[0].split("?")[0]
-        if not ref or SCHEME_RE.match(ref) or ref.startswith("//") or ref.startswith("data:"):
+        ref = html.unescape(m.group(3)).split("#")[0].split("?")[0]
+        if not ref or SCHEME_RE.match(ref) or ref.startswith(("//", "\\")) or ref.startswith("data:"):
             continue          # outside addresses are reported above; data: URIs carry their bytes
         if not exists(ref.lstrip("./")):
             rep.fail("DUG-96", f"{entry_label}:{line_of(entry_text, m.start())}",
@@ -130,54 +224,97 @@ def check_web_entry(entry_text: str, entry_label: str, exists, rep: Report) -> N
 
 def check_stylesheets(files: dict[str, bytes], rep: Report, where: str) -> None:
     for name, data in files.items():
-        if not name.endswith(".css"):
+        if PurePosixPath(name).suffix.lower() != ".css":
             continue
-        text = data.decode("utf-8", errors="replace")
-        for off, snippet in outside_refs(text):
-            rep.fail("DUG-96", f"{where}{name}:{line_of(text, off)}", f"outside address in a stylesheet: {snippet}")
+        for off, snippet, clean in outside_refs(decode(data)):
+            rep.fail("DUG-96", f"{where}{name}:{line_of(clean, off)}", f"outside address in a stylesheet: {snippet}")
+
+
+def check_scripts(files: dict[str, bytes], rep: Report, where: str) -> None:
+    """js/ (our own code; vendor/ is third-party and is covered by the MODEL_URL rule)."""
+    for name, data in files.items():
+        if not name.startswith("js/") or PurePosixPath(name).suffix.lower() not in (".js", ".mjs"):
+            continue
+        text = decode(data)
+        for m in URL_RE.finditer(text):
+            if url_host(m.group(2)) in LOOPBACK or (name, url_host(m.group(2))) in SCRIPT_ALLOWED:
+                continue
+            rep.fail("DUG-96", f"{where}{name}:{line_of(text, m.start())}", f"outside address in a shipped script: {m.group(0)}")
+        for m in PROTOCOL_RELATIVE_RE.finditer(text):
+            if text[m.start() - 1:m.start()] in ("'", '"', "`", "("):     # a string, not a // comment
+                rep.fail("DUG-96", f"{where}{name}:{line_of(text, m.start())}", "protocol-relative address in a shipped script")
+    cfg = files.get(CONFIG_JS)
+    if cfg is None:
+        rep.fail("DUG-96", where + CONFIG_JS, "missing — cannot tell where the pose model loads from")
+        return
+    m = MODEL_URL_RE.search(decode(cfg))
+    model = m.group(2) if m else ""
+    if not model or SCHEME_RE.match(model) or model.startswith(("//", "\\")) or model.lstrip("./") not in files:
+        rep.fail("DUG-96", where + CONFIG_JS, f"MODEL_URL {model!r} is not a file that ships — the pose detector "
+                                              "would fetch its model from the internet")
 
 
 # ---------------------------------------------------------------- DUG-97: SharePoint marks
 
 def check_sharepoint(files: dict[str, bytes], rep: Report, where: str) -> None:
     for name, data in files.items():
-        if Path(name).suffix.lower() not in TEXT_SUFFIXES:
+        suffix = PurePosixPath(name).suffix.lower()
+        if suffix not in TEXT_SUFFIXES:
             continue
-        text = data.decode("utf-8", errors="replace")
+        text = decode(data)
         for mark in SHAREPOINT_MARKS:
             for m in re.finditer(re.escape(mark), text, re.IGNORECASE):
                 rep.fail("DUG-97", f"{where}{name}:{line_of(text, m.start())}", f"SharePoint mark: {mark}")
-        if Path(name).suffix.lower() in (".html", ".htm"):
-            titles = TITLE_RE.findall(text)
-            if not titles:
-                rep.fail("DUG-97", f"{where}{name}", "no <title> — SharePoint blanks or strips it")
-            elif not any(t.strip() for t in titles):
-                rep.fail("DUG-97", f"{where}{name}", "blank <title> — the SharePoint signature")
+        if suffix in PAGE_SUFFIXES:
+            head = HEAD_RE.search(text)
+            title = TITLE_RE.search(head.group(1)) if head else None
+            if not title:
+                rep.fail("DUG-97", f"{where}{name}", "no <title> in <head> — SharePoint blanks or strips it")
+            elif not re.sub(r"<!--.*?-->", "", html.unescape(title.group(1)), flags=re.DOTALL).strip(" \t\r\n" + INVISIBLE):
+                rep.fail("DUG-97", f"{where}{name}", "blank <title> in <head> — the SharePoint signature")
 
 
-# ---------------------------------------------------------------- inputs
+# ---------------------------------------------------------------- what ships
+
+def git(repo: Path, *args: str) -> list[str]:
+    out = subprocess.run(["git", "-C", str(repo), *args], capture_output=True, text=True)
+    if out.returncode != 0:
+        raise SystemExit(f"FAIL [DUG-44] {repo}: git {' '.join(args)} failed — the checks need a git checkout\n{out.stderr}")
+    return [l for l in out.stdout.split("\0" if "-z" in args else "\n") if l]
+
+
+def tracked_shipped(repo: Path) -> list[str]:
+    return sorted(git(repo, "ls-files", "-z", "--", *SHIPPED))
+
 
 def repo_shipped_files(repo: Path) -> dict[str, bytes]:
-    out: dict[str, bytes] = {}
-    for item in SHIPPED:
-        p = repo / item
-        if p.is_file():
-            out[item] = p.read_bytes()
-        elif p.is_dir():
-            for f in sorted(p.rglob("*")):
-                if f.is_file() and f.name != ".DS_Store":
-                    out[f.relative_to(repo).as_posix()] = f.read_bytes()
-    return out
+    """Every tracked file the app bundles, as it is on disk now (what Xcode will copy)."""
+    return {name: (repo / name).read_bytes() for name in tracked_shipped(repo) if (repo / name).is_file()}
+
+
+def check_untracked(repo: Path, rep: Report) -> None:
+    """Files on disk in a bundled folder that the commit does not have — ignored ones included."""
+    for name in sorted(git(repo, "ls-files", "-z", "--others", "--", *SHIPPED)):
+        if PurePosixPath(name).name in IGNORED_EXTRAS:
+            continue
+        rep.fail("DUG-44", name, "not in the commit, but inside a folder the app bundles — it would ship"
+                                 + (" (and it looks like a credential)" if is_credential(name) else ""))
 
 
 def check_project_resources(repo: Path, rep: Report) -> None:
     pbx = (repo / PBXPROJ).read_text(encoding="utf-8")
-    phase = re.search(r"isa = PBXResourcesBuildPhase;.*?files = \((.*?)\);", pbx, re.DOTALL)
-    names = re.findall(r"/\* (.+?) in Resources \*/", phase.group(1)) if phase else []
-    bundled = sorted(n for n in names if n != "Assets.xcassets")
-    if bundled != sorted(SHIPPED):
+    bundled = None
+    for phase in re.finditer(r"isa = PBXResourcesBuildPhase;.*?files = \((.*?)\);", pbx, re.DOTALL):
+        names = re.findall(r"/\* (.+?) in Resources \*/", phase.group(1))
+        if "index.html" in names:
+            bundled = sorted(n for n in names if n != "Assets.xcassets")
+    if bundled is None:
+        rep.fail("DUG-44", PBXPROJ, "no Resources phase bundles index.html — cannot tell what the app ships")
+    elif bundled != sorted(SHIPPED):
         rep.fail("DUG-44", PBXPROJ, f"the app bundles {bundled}, but these checks cover {sorted(SHIPPED)} — "
                                     "update SHIPPED in scripts/ship_checks.py")
+    for m in re.finditer(r"isa = (PBXCopyFilesBuildPhase|PBXShellScriptBuildPhase);", pbx):
+        rep.fail("DUG-44", PBXPROJ, f"a {m.group(1)} could put unchecked files in the app — extend the checks first")
 
 
 def run_source(repo: Path) -> Report:
@@ -186,13 +323,18 @@ def run_source(repo: Path) -> Report:
         if not (repo / item).exists():
             rep.fail("DUG-44", item, "a file the app bundles is missing from the repo")
     check_project_resources(repo, rep)
-    check_native_entry(repo, rep)
+    check_untracked(repo, rep)
     files = repo_shipped_files(repo)
+    for name in files:
+        if is_credential(name):
+            rep.fail("DUG-44", name, "a credential-like file is committed inside a folder the app bundles")
+    check_native_entry(repo, rep)
     if ENTRY in files:
-        check_web_entry(files[ENTRY].decode("utf-8", errors="replace"), ENTRY, lambda r: (repo / r).is_file(), rep)
+        check_web_entry(decode(files[ENTRY]), ENTRY, lambda r: r in files, rep)
     check_stylesheets(files, rep, "")
+    check_scripts(files, rep, "")
     native = {p.relative_to(repo).as_posix(): p.read_bytes() for p in sorted((repo / NATIVE_DIR).rglob("*"))
-              if p.is_file() and p.suffix in (".swift", ".plist")}
+              if p.is_file() and p.suffix in (".swift", ".plist", ".strings")}
     check_sharepoint({**files, **native}, rep, "")
     return rep
 
@@ -208,24 +350,32 @@ def run_ipa(repo: Path, ipa: Path, bundle_id: str, build: str) -> Report:
         shipped = {n[len(root):]: z.read(n) for n in z.namelist() if n.startswith(root) and not n.endswith("/")}
     where = f"{ipa.name}!{apps[0]}/"
 
-    # DUG-44: every web file is inside the app and identical to the commit — no transforms
+    # DUG-44: exactly the commit's web files, untouched; nothing credential-like anywhere
     repo_files = repo_shipped_files(repo)
     for name, data in repo_files.items():
         if name not in shipped:
             rep.fail("DUG-44", where + name, "missing from the app")
         elif hashlib.sha256(shipped[name]).digest() != hashlib.sha256(data).digest():
             rep.fail("DUG-44", where + name, "differs from the repo — the build changed a shipped file")
-    extra = sorted(n for n in shipped if n.split("/")[0] in SHIPPED and n not in repo_files and not n.endswith(".DS_Store"))
-    for name in extra:
-        rep.fail("DUG-44", where + name, "in the app but not in the repo")
+    for name in sorted(shipped):
+        top = name.split("/")[0]
+        if top in SHIPPED and name not in repo_files and PurePosixPath(name).name not in IGNORED_EXTRAS:
+            rep.fail("DUG-44", where + name, "in the app but not in the commit")
+        if is_credential(name) and name != "embedded.mobileprovision":
+            rep.fail("DUG-44", where + name, "a credential-like file is inside the app")
 
-    web = {n: d for n, d in shipped.items() if n.split("/")[0] in SHIPPED}
+    # DUG-96 / DUG-97 over the whole bundle, not only the web folders
     if ENTRY in shipped:
-        check_web_entry(shipped[ENTRY].decode("utf-8", errors="replace"), where + ENTRY, lambda r: r in shipped, rep)
+        check_web_entry(decode(shipped[ENTRY]), where + ENTRY, lambda r: r in shipped, rep)
     else:
         rep.fail("DUG-96", where + ENTRY, "the entry point is not inside the app")
-    check_stylesheets(web, rep, where)
-    check_sharepoint(web, rep, where)
+    for name, data in shipped.items():
+        if name != ENTRY and PurePosixPath(name).suffix.lower() in PAGE_SUFFIXES:
+            for off, snippet, clean in outside_refs(decode(data)):
+                rep.fail("DUG-96", f"{where}{name}:{line_of(clean, off)}", f"outside address in a page the server serves: {snippet}")
+    check_stylesheets(shipped, rep, where)
+    check_scripts(shipped, rep, where)
+    check_sharepoint({n: d for n, d in shipped.items() if n != "Info.plist"}, rep, where)
 
     # packaging: what App Store Connect will read
     try:
@@ -233,6 +383,7 @@ def run_ipa(repo: Path, ipa: Path, bundle_id: str, build: str) -> Report:
     except Exception as exc:  # noqa: BLE001 — any unreadable plist is a failed build
         rep.fail("DUG-63", where + "Info.plist", f"unreadable: {exc}")
         return rep
+    check_plist_urls(shipped["Info.plist"], where + "Info.plist", rep)
     if info.get("CFBundleIdentifier") != bundle_id:
         rep.fail("DUG-63", where + "Info.plist", f"bundle id is {info.get('CFBundleIdentifier')!r}, expected {bundle_id!r}")
     if str(info.get("CFBundleVersion")) != str(build):
@@ -263,7 +414,7 @@ def main(argv: list[str]) -> int:
         print(f"ship checks FAILED on {label}: {len(rep.failures)} finding(s) — the build stops here.")
         return 1
     print(f"ship checks passed on {label}: entry point is local (DUG-96), no SharePoint marks (DUG-97), "
-          f"web files ship inside the app{' unchanged' if args.mode == 'ipa' else ''} (DUG-44).")
+          f"only the commit's web files ship{' unchanged' if args.mode == 'ipa' else ''} (DUG-44).")
     return 0
 
 

@@ -7,4 +7,11 @@ __pycache__/
 # credentials — App Store Connect IDs live in an untracked .env, the API key in ~/.appstoreconnect
 .env
 .env.*
+*.env
 *.p8
+*.p8.*
+*.p12
+*.pem
+*.cer
+*.mobileprovision
+AuthKey_*

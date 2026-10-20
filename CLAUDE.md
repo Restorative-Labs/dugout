@@ -142,9 +142,12 @@ DugOut Claude project holds published mirrors for reading on a phone — never e
    models. Fonts are self-hosted woff2 in `css/fonts/`; TF.js and the MoveNet model are
    vendored in `vendor/`. If you add a reference to a URL, you have broken the iOS wrapper
    and the offline demo. This is checkable — grep the entry point for `http`. **Enforced:**
-   `scripts/ship_checks.py` fails the TestFlight lane on an outside address in the entry point
-   (DUG-96), on SharePoint marks (DUG-97), and on any web file in the built app that differs from
-   the repo — the web app ships inside the app, with no over-the-air updates (DUG-44).
+   `scripts/ship_checks.py` fails the TestFlight lane on an outside address in the app's entry
+   point (native and `index.html`), in a stylesheet, in our own `js/` (the AI adapter's endpoint is
+   the one allowed address — invariant 3) or in the pose model's location (DUG-96); on SharePoint
+   marks (DUG-97); and on anything but the commit's web files, untouched, inside the built app — the
+   web app ships inside the app, with no over-the-air updates (DUG-44). `vendor/` is third-party
+   and is not scanned for addresses.
 3. **All AI calls go through the single adapter in `js/ai.js`.** With no key configured the
    app must still segment, evaluate, and render from a deterministic stub. The static demo
    is what gets shown to trainers; it has to feel real.
