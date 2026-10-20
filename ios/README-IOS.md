@@ -42,6 +42,33 @@ as a native iPhone app. No Node, no CocoaPods, no build steps — open, sign, Ru
 - Data (profiles, rounds, clips) lives in the app's own WKWebView storage —
   separate from Safari's, and it survives rebuilds/reinstalls of the same app.
 
+## TestFlight — one command (DUG-63)
+
+```
+cd ios && fastlane beta
+```
+
+That checks the files, picks the next build number, archives, checks the built app,
+uploads it to App Store Connect, waits for processing and confirms the build is in the
+**DugOut testers** group (automatic distribution is on, so testers get it with no hand
+step). `fastlane beta dry_run:true` does everything except the upload.
+
+- **Ships exactly a commit.** The lane refuses a working tree with uncommitted changes.
+- **Build number** = one above the highest of TestFlight's latest upload and the project's
+  `CURRENT_PROJECT_VERSION`, passed to the archive. The project file is not rewritten.
+- **No Apple ID sign-in.** It authenticates with the App Store Connect API key
+  (`~/.appstoreconnect/private_keys/AuthKey_<ASC_KEY_ID>.p8`, team key "DugOut fastlane"). Key ID
+  and Issuer ID come from the environment, an untracked `ios/fastlane/.env`, or
+  `~/.appstoreconnect/dugout.env`. Never commit any of them.
+- **Signing**: the Restorative Labs LLC Apple Distribution certificate in the login keychain;
+  Xcode creates or refreshes the App Store profile with the API key.
+- **The build stops** if `scripts/ship_checks.py` finds an outside address in the app's entry
+  point (DUG-96), SharePoint marks in a shipped file (DUG-97), or a web file in the built app
+  that differs from the repo (DUG-44 — the web app ships inside the app, untouched; no
+  over-the-air updates). It runs on the source before the archive and on the `.ipa` after.
+  `python3 scripts/test_ship_checks.py` plants each violation and proves it fails.
+- Needs fastlane (Homebrew) and Xcode. Build output goes to `ios/fastlane/build/` (ignored).
+
 ## Updating the web app
 
 Nothing to do — edit `index.html` / `js/` / `css/` as usual and press Run.

@@ -141,7 +141,10 @@ DugOut Claude project holds published mirrors for reading on a phone — never e
 2. **Offline-first: zero external network references.** No CDNs, no Google Fonts, no remote
    models. Fonts are self-hosted woff2 in `css/fonts/`; TF.js and the MoveNet model are
    vendored in `vendor/`. If you add a reference to a URL, you have broken the iOS wrapper
-   and the offline demo. This is checkable — grep the entry point for `http`.
+   and the offline demo. This is checkable — grep the entry point for `http`. **Enforced:**
+   `scripts/ship_checks.py` fails the TestFlight lane on an outside address in the entry point
+   (DUG-96), on SharePoint marks (DUG-97), and on any web file in the built app that differs from
+   the repo — the web app ships inside the app, with no over-the-air updates (DUG-44).
 3. **All AI calls go through the single adapter in `js/ai.js`.** With no key configured the
    app must still segment, evaluate, and render from a deterministic stub. The static demo
    is what gets shown to trainers; it has to feel real.
@@ -177,6 +180,8 @@ Resources are **folder references**: `index.html`, `css`, `js`, `vendor`, plus
   tried. Never hand-edit `library.js`.
 - `scripts/build_index.py` — historical one-shot assembler. Needs a `main_inner.html`
   fragment in `$DUGOUT_SCRATCH` or `scripts/_scratch/`. Not part of the normal loop.
+- `scripts/ship_checks.py` — the ship checks the TestFlight lane runs (`cd ios && fastlane beta`,
+  see `ios/README-IOS.md`). `scripts/test_ship_checks.py` proves each one fails when planted.
 
 ---
 
