@@ -10,6 +10,7 @@
 		D06000000000000000000101 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = D06000000000000000000001 /* AppDelegate.swift */; };
 		D06000000000000000000102 /* ViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = D06000000000000000000002 /* ViewController.swift */; };
 		D06000000000000000000103 /* LocalHTTPServer.swift in Sources */ = {isa = PBXBuildFile; fileRef = D06000000000000000000003 /* LocalHTTPServer.swift */; };
+		D0600000000000000000010E /* SceneDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0600000000000000000000E /* SceneDelegate.swift */; };
 		D06000000000000000000105 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = D06000000000000000000005 /* Assets.xcassets */; };
 		D06000000000000000000106 /* index.html in Resources */ = {isa = PBXBuildFile; fileRef = D06000000000000000000006 /* index.html */; };
 		D06000000000000000000107 /* css in Resources */ = {isa = PBXBuildFile; fileRef = D06000000000000000000007 /* css */; };
@@ -23,6 +24,7 @@
 		D06000000000000000000001 /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
 		D06000000000000000000002 /* ViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ViewController.swift; sourceTree = "<group>"; };
 		D06000000000000000000003 /* LocalHTTPServer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalHTTPServer.swift; sourceTree = "<group>"; };
+		D0600000000000000000000E /* SceneDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SceneDelegate.swift; sourceTree = "<group>"; };
 		D06000000000000000000004 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		D06000000000000000000005 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		D06000000000000000000006 /* index.html */ = {isa = PBXFileReference; lastKnownFileType = text.html; path = index.html; sourceTree = "<group>"; };
@@ -58,6 +60,7 @@
 			isa = PBXGroup;
 			children = (
 				D06000000000000000000001 /* AppDelegate.swift */,
+				D0600000000000000000000E /* SceneDelegate.swift */,
 				D06000000000000000000002 /* ViewController.swift */,
 				D06000000000000000000003 /* LocalHTTPServer.swift */,
 				D06000000000000000000004 /* Info.plist */,
@@ -163,6 +166,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				D06000000000000000000101 /* AppDelegate.swift in Sources */,
+				D0600000000000000000010E /* SceneDelegate.swift in Sources */,
 				D06000000000000000000102 /* ViewController.swift in Sources */,
 				D06000000000000000000103 /* LocalHTTPServer.swift in Sources */,
 			);
