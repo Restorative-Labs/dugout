@@ -138,5 +138,8 @@ window.DUGOUT_CONFIG = {
   // ER-05: 7-10 stays environmental/fun-first — no fine mechanical language.
   FUN_FIRST_BANDS: ['7-10'],
 
-  DEBUG: true                     // logs detection confidence for threshold tuning
+  // Off in every build that leaves the Mac (DUG-153, R-13): when on, evaluate.js logs detector
+  // confidences — internal scores — and the round card shows how the round was read.
+  // scripts/ship_checks.py fails the TestFlight build if this is true. Flip it locally only.
+  DEBUG: false
 };

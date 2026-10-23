@@ -42,6 +42,49 @@ as a native iPhone app. No Node, no CocoaPods, no build steps — open, sign, Ru
 - Data (profiles, rounds, clips) lives in the app's own WKWebView storage —
   separate from Safari's, and it survives rebuilds/reinstalls of the same app.
 
+## TestFlight — one command (DUG-63)
+
+```
+cd ios && fastlane beta
+```
+
+In order: refuse uncommitted changes; run the ship checks on the files; pick the next build
+number; fetch the App Store signing profile; archive and export; run the ship checks again on the
+`.ipa`; upload; wait for App Store Connect to process it; then wait until TestFlight reports the
+build **IN_BETA_TESTING** for the internal **DugOut testers** group (automatic distribution is on,
+so testers get it with no hand step). It fails loudly on any state a tester could not install.
+
+`fastlane beta dry_run:true` builds, signs and checks only: no upload and no writes to Apple (it
+skips the clean-tree rule, so it can check uncommitted work). Any other option or spelling stops
+the lane — a typo can never upload.
+
+- **Ships exactly a commit.** A real run refuses uncommitted changes, and the checks refuse any
+  file inside `css/`, `js/` or `vendor/` that the commit does not have — git-ignored ones included.
+- **Build number** = one above the highest of TestFlight's latest upload, its highest build and the
+  project's `CURRENT_PROJECT_VERSION`, passed to the archive. The project file is not rewritten.
+  If processing takes over an hour the lane stops and says the build *was* uploaded — do not
+  re-run it then; watch TestFlight.
+- **No Apple ID sign-in.** The App Store Connect API key is
+  `~/.appstoreconnect/private_keys/AuthKey_<ASC_KEY_ID>.p8` (team key "DugOut fastlane"; override
+  the path with `ASC_KEY_PATH`). `ASC_KEY_ID` and `ASC_ISSUER_ID` come from the shell, else from the
+  dotenv files fastlane loads itself (`ios/fastlane/.env`, `.env.default`, …), else from
+  `~/.appstoreconnect/dugout.env`. Keep both files `chmod 600`. Never commit any of them.
+- **Signing**: the Restorative Labs LLC "Apple Distribution" certificate in the login keychain and
+  the App Store profile "com.restorativelabs.dugout-ios AppStore", which the lane fetches with the
+  API key (a real run creates it if missing). The archive and export are signed by hand — xcodebuild
+  never talks to Apple and the key never appears on its command line.
+- **One-time keychain prompt.** The first time codesign uses the distribution key, macOS asks for the
+  login password. Click **Always Allow**, or every run waits at that dialog.
+- **The build stops** if `scripts/ship_checks.py` finds an outside address in the app's entry point
+  — the Swift it compiles, its Info.plist, the strings in its executable, or `index.html` — or in a
+  stylesheet, our own scripts or the pose model's location (DUG-96); SharePoint marks in a shipped
+  file (DUG-97); `DEBUG` on in `js/config.js` (DUG-153); or anything but the commit's web files, untouched, inside the app, including any
+  credential-like file or pasted key (DUG-44: the web app ships inside the app; no over-the-air
+  updates). It runs on the source before the archive and on the `.ipa` after; on a real run the
+  `.ipa` is compared with the commit itself. `python3 -I scripts/test_ship_checks.py` plants each
+  violation and proves it fails.
+- Needs fastlane (Homebrew) and Xcode. Build output goes to `ios/fastlane/build/` (ignored).
+
 ## Updating the web app
 
 Nothing to do — edit `index.html` / `js/` / `css/` as usual and press Run.
