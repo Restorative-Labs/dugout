@@ -15,3 +15,7 @@ __pycache__/
 *.cer
 *.mobileprovision
 AuthKey_*
+
+# SwiftPM build output for ios/DugOutCore
+.build/
+.swiftpm/

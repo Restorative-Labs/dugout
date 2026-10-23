@@ -1,0 +1,253 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 56;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		1AB000000000000000000101 /* DugOutLabApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1AB000000000000000000001 /* DugOutLabApp.swift */; };
+		1AB000000000000000000102 /* LabModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1AB000000000000000000002 /* LabModel.swift */; };
+		1AB000000000000000000103 /* SwingDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1AB000000000000000000003 /* SwingDetailView.swift */; };
+		1AB000000000000000000104 /* DugOutCore in Frameworks */ = {isa = PBXBuildFile; productRef = 1AB000000000000000000601 /* DugOutCore */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXFileReference section */
+		1AB000000000000000000001 /* DugOutLabApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DugOutLabApp.swift; sourceTree = "<group>"; };
+		1AB000000000000000000002 /* LabModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LabModel.swift; sourceTree = "<group>"; };
+		1AB000000000000000000003 /* SwingDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SwingDetailView.swift; sourceTree = "<group>"; };
+		1AB000000000000000000004 /* DugOutCore */ = {isa = PBXFileReference; lastKnownFileType = wrapper; name = DugOutCore; path = ../DugOutCore; sourceTree = "<group>"; };
+		1AB000000000000000000005 /* DugOutLab.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = DugOutLab.app; sourceTree = BUILT_PRODUCTS_DIR; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		1AB000000000000000000302 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				1AB000000000000000000104 /* DugOutCore in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		1AB000000000000000000201 = {
+			isa = PBXGroup;
+			children = (
+				1AB000000000000000000202 /* DugOutLab */,
+				1AB000000000000000000004 /* DugOutCore */,
+				1AB000000000000000000203 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		1AB000000000000000000202 /* DugOutLab */ = {
+			isa = PBXGroup;
+			children = (
+				1AB000000000000000000001 /* DugOutLabApp.swift */,
+				1AB000000000000000000002 /* LabModel.swift */,
+				1AB000000000000000000003 /* SwingDetailView.swift */,
+			);
+			path = DugOutLab;
+			sourceTree = "<group>";
+		};
+		1AB000000000000000000203 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				1AB000000000000000000005 /* DugOutLab.app */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		1AB000000000000000000401 /* DugOutLab */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 1AB000000000000000000502 /* Build configuration list for PBXNativeTarget "DugOutLab" */;
+			buildPhases = (
+				1AB000000000000000000301 /* Sources */,
+				1AB000000000000000000302 /* Frameworks */,
+				1AB000000000000000000303 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = DugOutLab;
+			packageProductDependencies = (
+				1AB000000000000000000601 /* DugOutCore */,
+			);
+			productName = DugOutLab;
+			productReference = 1AB000000000000000000005 /* DugOutLab.app */;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		1AB000000000000000000402 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = 1;
+				LastUpgradeCheck = 1500;
+				TargetAttributes = {
+					1AB000000000000000000401 = {
+						CreatedOnToolsVersion = 15.0;
+					};
+				};
+			};
+			buildConfigurationList = 1AB000000000000000000501 /* Build configuration list for PBXProject "DugOutLab" */;
+			compatibilityVersion = "Xcode 14.0";
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				en,
+				Base,
+			);
+			mainGroup = 1AB000000000000000000201;
+			productRefGroup = 1AB000000000000000000203 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				1AB000000000000000000401 /* DugOutLab */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		1AB000000000000000000303 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		1AB000000000000000000301 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				1AB000000000000000000101 /* DugOutLabApp.swift in Sources */,
+				1AB000000000000000000102 /* LabModel.swift in Sources */,
+				1AB000000000000000000103 /* SwingDetailView.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin XCBuildConfiguration section */
+		1AB000000000000000000503 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_TESTABILITY = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				ONLY_ACTIVE_ARCH = YES;
+				SDKROOT = iphoneos;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)";
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+			};
+			name = Debug;
+		};
+		1AB000000000000000000504 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				SDKROOT = iphoneos;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				VALIDATE_PRODUCT = YES;
+			};
+			name = Release;
+		};
+		1AB000000000000000000505 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = NKNR8F3VKC;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = "DugOut Lab";
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 0.1;
+				PRODUCT_BUNDLE_IDENTIFIER = com.restorativelabs.dugoutlab;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Debug;
+		};
+		1AB000000000000000000506 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = NKNR8F3VKC;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = "DugOut Lab";
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 0.1;
+				PRODUCT_BUNDLE_IDENTIFIER = com.restorativelabs.dugoutlab;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		1AB000000000000000000501 /* Build configuration list for PBXProject "DugOutLab" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				1AB000000000000000000503 /* Debug */,
+				1AB000000000000000000504 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		1AB000000000000000000502 /* Build configuration list for PBXNativeTarget "DugOutLab" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				1AB000000000000000000505 /* Debug */,
+				1AB000000000000000000506 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+/* End XCConfigurationList section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		1AB000000000000000000601 /* DugOutCore */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = DugOutCore;
+		};
+/* End XCSwiftPackageProductDependency section */
+	};
+	rootObject = 1AB000000000000000000402 /* Project object */;
+}
