@@ -3,3 +3,19 @@
 media/
 __pycache__/
 *.pyc
+
+# credentials — App Store Connect IDs live in an untracked .env, the API key in ~/.appstoreconnect
+.env
+.env.*
+*.env
+*.p8
+*.p8.*
+*.p12
+*.pem
+*.cer
+*.mobileprovision
+AuthKey_*
+
+# SwiftPM build output for ios/DugOutCore
+.build/
+.swiftpm/

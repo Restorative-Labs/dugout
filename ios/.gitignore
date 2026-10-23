@@ -2,3 +2,12 @@ xcuserdata/
 *.xcuserstate
 DerivedData/
 build/
+
+# fastlane (DUG-63): build output, reports and credentials never enter the repo
+fastlane/build/
+fastlane/report.xml
+fastlane/README.md
+fastlane/.env*
+*.ipa
+*.mobileprovision
+*.dSYM.zip

@@ -15,6 +15,210 @@ Next: <the one thing the next session should pick up>
 
 ---
 
+## 2026-10-20 (afternoon) — rulings, one CANON, build 5, and the launch date
+Tickets: DUG-153, DUG-164, DUG-63, DUG-165, DUG-166; board re-cut (NATIVE-REBUILD-PLAN §5.4) now unblocked
+Changed: CANON on this branch (`cb9b793`, `8384c15`) — R-44 RULED (b); R-45/R-46 copied word for word from
+the DUG-63/DUG-153 stack; the other (Cowork) session's R-47–R-51 and `docs/NATIVE-REBUILD-PLAN.md`
+committed with Derell's OK; R-16 retired for R-26 + a 7-day free trial; R-38 US only; R-43 round marks
+only; R-48 no sign-in at v1; new R-52 (legal on Claude's draft + Derell's sign-off), R-53 (Terms = Apple
+EULA, text in-app), R-54 (no family pilot before launch), R-55 (telemetry passes R-45 by a one-host
+allowlist). DUG-153 on `DUG-153-debug-off` (PR #4, stacked on #3 and #2): DEBUG off + a ship check;
+**TestFlight 1.0 (5)** uploaded and IN_BETA_TESTING (build 4 had debug on — my miss in the DUG-63 checks).
+State: committed + pushed on `native/phase-1-pipeline`, `DUG-63-testflight-lane`, `DUG-153-debug-off`.
+PRs #2 → #3 → #4 open, not merged; `main` untouched. Uncommitted and not this session's:
+`docs/NATIVE-P1.md` (other session, telemetry §9), `design/canvas/*` (DUG-157 session).
+Next: Derell opens build 1.0 (5) (closes DUG-165's last point) and films the first 1080p60 cage batch;
+then the Jira re-cut against R-47 and the merges #2 → #3 → #4 plus this branch's docs.
+
+**Launch date (internal, not publishable).** Monte Carlo on the estimators' model, 20,000 runs:
+21 artboards + correction + telemetry, with both levers (film this weekend; StoreKit alongside the
+screens) → P50 **~Feb 2 2027**, P90 ~Feb 25, live in 2026 ~2%; without the levers → P50 ~Feb 12, P90 ~Mar 7.
+At ~9 screens it was P50 ~Jan 1. The screens, not the swing reader, set the date. "Sell in 2026" (R-24)
+is effectively off at this scope — loosening it is Derell's call, not yet made.
+**Unproven:** every capture/screen/telemetry duration (nothing like them exists in Swift to measure);
+Apple's 2026 holiday slowdown; whether App Review accepts in-app Terms text (R-53).
+
+---
+
+## 2026-10-20 — DUG-63: one command sends a build to TestFlight; first build is out
+Tickets: DUG-63 (with DUG-96, DUG-97, DUG-44), DUG-165 (fixed), DUG-166 (filed), DUG-106 (base)
+Changed: on `DUG-63-testflight-lane` (built on `DUG-106-bundle-id`, so it builds
+`com.restorativelabs.dugout-ios`): `ios/fastlane/Fastfile` (`cd ios && fastlane beta`),
+`scripts/ship_checks.py` + `scripts/test_ship_checks.py` (79 planted cases), `.gitignore` /
+`ios/.gitignore` (build output, credentials), `ios/README-IOS.md`, `CLAUDE.md` (invariant 2 now
+names its enforcement), and DUG-165's UIScene move (`SceneDelegate.swift`, `AppDelegate.swift`,
+`Info.plist`, `project.pbxproj`). CANON: R-07 enforcement, **R-45** (ruled and enforced), **R-46** (open).
+Outside the repo: `~/.appstoreconnect/dugout.env` (Key ID, Issuer ID; mode 600, untracked). Apple
+side: the API key created the App Store profile "com.restorativelabs.dugout-ios AppStore".
+State: committed + pushed on `DUG-63-testflight-lane`. Not merged; `main` untouched. The main
+checkout (on `native/phase-1-pipeline`) still has another session's uncommitted
+`design/canvas/render_check.py` and `screens.py` (2 files, +109/−28) — not this session's, not touched.
+Next: Derell opens **Dugout: Next Rep 1.0 (4)** from TestFlight on his iPhone and confirms the web
+app shows — that closes DUG-165's last open point. Then rule R-46 and the merge order (DUG-106, then DUG-63).
+
+**Result.** One run on a clean checkout of `8aa614d` took 4½ minutes, with no hand step and no
+Apple ID sign-in: build number 4 (one above TestFlight's 0 and the project's 3), archive, export
+signed by the LLC's Apple Distribution certificate, checks on the source and on the `.ipa`,
+upload, processing, and **IN_BETA_TESTING** for the internal group "DugOut testers".
+`ITSAppUsesNonExemptEncryption = NO` was already in Info.plist (2026-09-08) and is now verified in
+every `.ipa`. Planted outside addresses stop the real command at the first check, before any call
+to Apple: CDN `<script>` in `index.html` → `FAIL [DUG-96] index.html:44`; the start URL changed in
+`ViewController.swift` → `FAIL [DUG-96] … ViewController.swift:56`. A tampered copy of the real
+`.ipa` fails the after-build check. Evidence is posted on DUG-63.
+
+**Found on the way:**
+- **DUG-165.** Built with Xcode 27, the app quit at launch on iOS 27.0.1: devicectl launched it while
+  the phone was unlocked, then "The app terminated with the exit code 0". With the UIScene life cycle
+  the same build stayed up (still running after 20 s). It is fixed on the branch and in build 4.
+- **Xcode's automatic export wanted cloud-managed signing**, which the App Manager key may not use.
+  The lane signs by hand with the local distribution certificate and a profile fetched by API key.
+- **Two adversarial review rounds (7 reviewers) before the first upload.** They caught:
+  - a mistyped `dry_run` that would have uploaded for real;
+  - git-ignored files inside `js/` that would have shipped with every check green;
+  - the vendored pose detector's silent fallback to tfhub.dev;
+  - dry runs that wrote to Apple;
+  - "success" printed for builds testers could not install.
+  
+  All of them are fixed, and each has a test that fails on the previous code.
+- **DUG-166 (predates this work, filed only):** the loopback server's port fallback never worked. If
+  8384 is taken, DugOut shows the other server's page, with the camera granted. A tested fix is on the
+  ticket. Recommend fixing it before any tester outside the team.
+
+**Unproven, and what would settle it:**
+- **The web view renders in build 4.** Only "the process stays up" was measured. Settled when Derell
+  opens it from TestFlight and the welcome screen appears.
+- **The launch failure's cause.** The repeat of the old build was blocked because the phone had
+  locked. The A/B is one launch each way. Settled if the TestFlight build opens; a clean repeat of the
+  old build exiting with code 0 on an unlocked phone would confirm the cause.
+- **Unattended runs.** The keychain prompt for codesign appeared once (09:45, answered "Allow", not
+  "Always Allow") and did not appear on later runs. A run with nobody at the Mac has not been tried.
+- **Two runs at once.** Two simultaneous runs would pick the same build number. The second upload
+  should be rejected by Apple; not tried.
+
+---
+
+## 2026-10-15 (overnight, unattended) — P1.3/P1.4 ported, parity gate, DugOut Lab on the phone
+Tickets: DUG-159 (also filed/updated DUG-161; deny rules commit 2328f22)
+Changed: on `native/phase-1-pipeline` only — `segment.js` → `SegmentMath`/`Segmenter` (P1.3) and
+`evaluate.js` → `Evaluator` (P1.4), constants copied as-is and marked PROVISIONAL (R-41);
+keyframe poses with Vision (no crop); the parity harness running the repo's unmodified JS in
+JavaScriptCore; `dugout-probe swings|parity`; the DugOut Lab test app (`ios/DugOutLab`, never
+ships — SKIP_INSTALL). An adversarial review (31 agents) found real defects; fixed test-first:
+AVAssetImageGenerator silently dropped ~9% of HEVC keyframes (now decoded in order, none
+missing); an all-zero "nobody" pose where the JS skips the frame; internal scores reachable via
+public Codable (R-02, now package-only); JS exceptions discarded by the harness; six small port
+bugs the tests could not catch (now caught, plus guard/caps); Lab Clear not cancelling, tmp
+copies left behind, no snapshot cover, AirPlay on, broken loop on 2/15 swings.
+CANON: R-42 gets the MoveNet-vs-Vision same-frame A/B (70/90 per-swing marks agree); R-43
+(per-swing marks, OPEN) rewritten with the quote fixed and two counter-cases; new R-44 (native
+reads every frame + Y luma, the web app ~1 in 4 + RGB luma — swing counts differ on 5/7 clips;
+OPEN, recommend re-measuring per-sample constants with R-41).
+Parity: 7 clips ALL IDENTICAL — swings 3/2/2/3/2/2/1, 90/90 graded marks, samples, peaks,
+tracks, capHit, round and focus. `swift test` with DUGOUT_CLIPS: 41 tests, 0 failures. Main
+DugOut app still builds (iOS 15). Lab installed on Derell's iPhone.
+State: committed + pushed to `native/phase-1-pipeline`. Not merged. `main` untouched.
+Next: Derell answers the morning-report questions on DUG-159 (R-43, R-44 first), then measure on
+the first 1080p60 cage clips before any constant moves.
+
+---
+
+## 2026-10-14 (close) — Derell's answers recorded; no code
+Tickets: DUG-159, DUG-40
+Changed: `docs/CANON.md` R-41 → **CONFIRMED** (the original clips were Slo-mo) plus the new
+footage rule; R-42 gains the lead-arm answer. Jira: DUG-159 note on CT-05/CT-06; DUG-40 device pass recorded
+(it was already in QA — left there for the full checklist). Nothing else.
+State: committed+pushed on `native/phase-1-pipeline`. Unmerged branches: `DUG-40-film-controls`,
+`DUG-106-bundle-id`, `native/phase-1-pipeline`, `DUG-160-library-drift-guard` (built on native;
+merge native into it, or it into native, before either reaches `main`). Still uncommitted and
+untouched: `design/canvas/*.py` (another session's DUG-157 edits).
+Next: **measure the 2026-10-15 cage clips (1080p, 60 fps, normal Video)** with
+`dugout-probe timeline` and `pose` — the first footage on a real time base. P1.3 does not
+start until those numbers exist.
+
+**Answers (Derell):** the original test clips were filmed in Slo-mo — R-41 confirmed, so every
+time constant in `config.js` was tuned on playback time. New test footage is normal Video,
+1080p at 60 fps, no more Slo-mo; first clips Oct 15 from the cage. DJ is right-handed and the
+arm that drops at contact is his lead arm. Fix 1 (DUG-40) passed on his phone, checked live;
+back in QA for the full checklist.
+
+**What the lead-arm answer means (checked in `evaluate.js`, measured on the CSVs):** CT-05 and
+CT-06 read only the rear elbow and wrist, and DJ's rear pair clears the 0.3 gate in 15/15 frames
+at all five contacts — they do not depend on the dropout. But FN-03 (finish height) averages both
+wrists and `mid()` silently falls back to one, so when the lead wrist drops, FN-03 still renders a
+mark measured on the rear wrist alone. Caveats: holds for a right-handed hitter filmed from this
+side, and only if `orient()` names the front foot right (ankles not yet measured under Vision).
+60 fps normal video will also carry more motion blur per frame than 240 fps slo-mo — expect contact
+confidence to fall, and re-measure before trusting any of tonight's numbers on the new footage.
+
+---
+
+## 2026-10-14 — Film tab fix (DUG-40), then native Phase 1: real timestamps and Vision pose
+Tickets: DUG-40, DUG-156 (not started), DUG-158 (epic, filed), DUG-159 (filed)
+Changed: **Branch `DUG-40-film-controls`** (`643c364`, pushed, off `DUG-106-bundle-id`):
+the checkpoint chips get their own row above the transport; scrub / step-play-step / speed rows
+≥ 44pt; the swing bar moves above the stage; the right rail wraps on short screens; the frame is
+capped to the stage height. Verified headless at 320×568, 375×667, 440×956 (zero overlaps); the
+original layout reproduced the bug exactly. Installed on Derell's phone — **device check not
+yet reported**. **Branch `native/phase-1-pipeline`** (off `main` `f79bce0`): `ios/DugOutCore`
+Swift package (library + `ProbeOutput` test-only target + `dugout-probe` CLI + 11 tests),
+linked to `ios/DugOut.xcodeproj`; `docs/CANON.md` R-40/R-41/R-42; `docs/NATIVE-P1.md`
+committed with an "As built" appendix. Nothing in `js/` touched.
+State: committed+pushed on both branches; neither merged. `DUG-106-bundle-id` still unmerged.
+Left untouched and uncommitted: `design/canvas/*.py` (another session's DUG-157 edits).
+Next: **Derell confirms the regression clips were filmed in Slo-mo (R-41)** and films one
+normal-speed swing — every time constant P1.3 transfers from `config.js` depends on the answer.
+
+**Native ruled today (R-40).** Tonight was P1.1 + P1.2 only — no UI, no segment/evaluate port.
+Tests written first and seen failing (DUG-92), twice: the first slice, and the fixes below.
+
+**P1.1 — the timeline is trustworthy, with one trap.** Monotonic on every clip. `Three Swings`
+is H.264 1280×720, 2,485 frames, every gap 33.333 ms. The pitch clips are HEVC 1920×1080 and open
+with an **iPhone empty edit (0.188–0.204 s)** for which AVAssetReader emits one **all-black frame
+at t=0** with no marker — it would have been fed to Vision and, in P1.3, to motion sampling.
+Now skipped and counted. The 133 ms gap before `pitch_01`'s last frame is real (in the file).
+
+**P1.2 — Vision sees the wrists (R-42).** Person found in 100% of camera frames on all 7 clips;
+wrist medians 0.76–0.83, elbows 0.80–0.85, no crop. But at contact the far-side arm drops —
+`Three Swings` @31.58 s left elbow 0.184. Fair claim: at least as good as the two-pass MoveNet
+the app ships, clearly better than single-pass; **not** "0.8 vs 0.3", because the scales differ
+and the 0.3 is 8 values from an unnamed clip whose probe code was never kept.
+
+**The finding that matters most (R-41).** The verification pass found the regression clips are
+**~8× slow-motion exports** (Apple's slo-mo flag on `Three Swings`; audio band-limited to
+~2.7 kHz). Every timestamp, every "swing lasts 0.1–0.2 s", every `*_SEC` constant and the
+per-frame spike threshold were measured in playback time on slowed footage. Nothing in the repo
+said so. ~7% of frames are also near-repeats behind perfectly even timestamps.
+
+**How it was checked.** A 29-agent adversarial verification: independent recompute of all 132
+table cells from the CSVs (0 hard mismatches), orientation proved on synthetic clips, keypoint
+plausibility without viewing a frame, MoveNet comparability, compliance. Its upheld defects were
+fixed test-first: the black filler frame; the keypoint CSV writer compiled into the shipped app
+(moved to `ProbeOutput` — 0 symbols in the Release binary now); CSV precision; a repo guard that a
+symlink or case-variant path could bypass (now also refuses cloud-synced folders); real-clip
+tests that skipped green when `DUGOUT_CLIPS` was wrong. Pose CSVs (biometric) live only in the
+session scratchpad, never in the repo.
+
+**Later slice — the tip library as bundled data (DUG-159).** `js/library.js` exported to
+`ios/DugOutCore/Sources/DugOutCore/Resources/tip-library.json` by the new
+`scripts/export_library_json.swift` (JavaScriptCore evaluates the JS literal; `JSON.stringify`
+writes it). All five sections, not just tips: 29 tips, 12 glossary entries, 4 school presets,
+12 engine rules and the 3 red-line `deprecatedCues`. `TipLibrary.swift` loads it into typed
+structs via `Bundle.module`. `TipLibraryTests` (written first, seen failing 10 ways against an
+empty placeholder) re-evaluates `library.js` on every run and compares strictly — a boolean never
+equals 1 — and proves the structs model every field. Mutation-tested: a doubled space in ST-01, a
+`true`→`1`, and a dropped deprecated cue were each caught and named by tip and field. The app
+bundles the JSON byte-identical. `library.js` read only, never changed. CANON R-06 amended with
+the export chain. A 2-agent check then proved the JSON equal to `library.js` with no
+JavaScriptCore (0 of 739 strings differ, at the UTF-8 byte level) but broke the first guard:
+Swift's `String ==` is canonical equivalence (a decomposed "≠" passed) and a duplicated `tip` key
+hid a rewrite from Swift's JSON readers. Fixed with a byte-for-byte test (bundled file == a fresh
+export), seen failing on both; strings now compare by UTF-8; the hard-coded 29 now reads the
+header's own count; the exporter refuses a non-object library. 17/17 green. **The guard is not
+automatic** — CANON R-06 now says so. **Rule for later:** every time `build_library.py` runs, run
+`swift scripts/export_library_json.swift` too — the test will fail until you do.
+
+---
+
 ## 2026-10-08 — main fast-forwarded to the rescue branch; Pages unfrozen
 Tickets: DUG-34, DUG-38 (the swing-gate fix reaches Pages); R-37, R-38, R-39 committed
 Changed: `2ea48c4` on `rescue/jul-field-tuning` — `docs/CANON.md` (R-37 through R-39),
